@@ -1,10 +1,4 @@
-import sys
-from pathlib import Path
 import json
-
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.append(str(project_root))
 
 from claude_agent_sdk import ResultMessage
 """Calculator agent implementation"""

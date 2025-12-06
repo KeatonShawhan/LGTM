@@ -1,10 +1,3 @@
-import sys
-from pathlib import Path
-
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.append(str(project_root))
-
 """MCP server for calculator tools"""
 from claude_agent_sdk import create_sdk_mcp_server
 from tools.mathTools import add, multiply
