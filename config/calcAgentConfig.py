@@ -12,13 +12,11 @@ def get_calculator_agent_config():
         "allowed_tools": [
             "mcp__calc__add",
             "mcp__calc__multiply",
-            "mcp__calc__subtract",
-            "mcp__calc__divide",
             "Read"
         ],
         "system_prompt": """You are a helpful calculator assistant.
-        When asked to read files, always use absolute paths to access the user's local machine.
-        After performing calculations, explain your work clearly."""
+        After performing calculations, explain your work clearly.""",
+        "max_turns": 10,
     }
 
 __all__ = ['get_calculator_agent_config']

@@ -3,7 +3,7 @@ import json
 from claude_agent_sdk import ResultMessage
 """Calculator agent implementation"""
 from agents.base import AgentFactory
-from config.agentConfig import get_calculator_agent_config
+from config.calcAgentConfig import get_calculator_agent_config
 #from utils.logging import log_message, log_separator
 
 class CalculatorAgent:
@@ -15,7 +15,7 @@ class CalculatorAgent:
     
     async def __aenter__(self):
         """Async context manager entry"""
-        self.client = AgentFactory.create_calculator_agent(self.config)
+        self.client = AgentFactory.create_from_config(self.config)
         await self.client.__aenter__()
         return self
     
