@@ -1,10 +1,11 @@
 """Main entry point for calculator agent"""
 import asyncio
 from agents.calculator import CalculatorAgent
+from utils.repoManager import RepoManager
 
 async def main():
     """Run calculator agent with sample task"""
-    
+    RepoManager.
     # Create and use calculator agent
     async with CalculatorAgent() as agent:
         # Example task: read file and perform calculation
