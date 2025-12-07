@@ -30,7 +30,7 @@ __all__ = ['QueryAgent']
 if __name__ == '__main__':
     #test queryAgent
     test_message = "please write hello world in python. Provide no other text, only the code required to execute the task. Do not format it in markdown or anything like that, respond with plaintext code."
-    agent = QueryAgent()
+    agent = QueryAent()
     response = agent.query(test_message)
     print(f'test message: {test_message}')
     print(f'response: {response}')
