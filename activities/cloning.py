@@ -141,54 +141,6 @@ async def setup_repo_with_compose(repo_url: str, branch: str = "main"):
         raise
 
 
-# Activity 3: Run commands in the container
-@activity.defn(name="run_command_in_sandbox")
-async def run_command_in_sandbox(container_id: str, command: str):
-    """
-    Execute a command inside the Docker container
-    """
-    import docker
-
-    client = docker.from_env()
-    container = client.containers.get(container_id)
-    
-    result = container.exec_run(command, workdir="/workspace")
-    
-    return {
-        "exit_code": result.exit_code,
-        "output": result.output.decode('utf-8')
-    }
-
-
-# Activity 4: Cleanup
-@activity.defn(name="cleanup_sandbox")
-async def cleanup_sandbox(environment: dict):
-    """
-    Stop container, remove images, delete temp files
-    """
-    import docker
-
-    client = docker.from_env()
-    
-    try:
-        # Stop and remove container
-        if "container_id" in environment:
-            container = client.containers.get(environment["container_id"])
-            container.stop(timeout=10)
-            container.remove()
-        
-        # Remove image if needed
-        if "image_id" in environment:
-            client.images.remove(environment["image_id"], force=True)
-        
-        # Remove temp directory
-        if "temp_dir" in environment:
-            import shutil
-            shutil.rmtree(environment["temp_dir"], ignore_errors=True)
-            
-    except Exception as e:
-        print(f"Cleanup warning: {e}")
-
 @activity.defn(name="read_file_from_repo")
 async def read_file_from_repo(environment: dict, file_path: str) -> dict:
     """
