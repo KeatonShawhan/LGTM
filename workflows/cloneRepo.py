@@ -1,6 +1,8 @@
 
 from temporalio import activity, workflow
 from temporalio.common import RetryPolicy
+from activities.cloning import setup_repo_with_compose, setup_repo_environment, read_file_from_repo
+from datetime import timedelta
 
 @workflow.defn(name="CodeDevelopmentWorkflow")
 class CodeDevelopmentWorkflow:
@@ -8,8 +10,6 @@ class CodeDevelopmentWorkflow:
         self.complete = False
     @workflow.run
     async def run(self, repo_url: str, branch: str = "main"):
-        from activities.cloning import setup_repo_with_compose, setup_repo_environment, read_file_from_repo
-        from datetime import timedelta
         
         # Setup environment
         environment = await workflow.execute_activity(
@@ -32,6 +32,10 @@ class CodeDevelopmentWorkflow:
             workflow.logger.info(f"   Size: {readme['file_size']} bytes")
             workflow.logger.info(f"   Lines: {readme['line_count']}")
             workflow.logger.info(f"   Preview: {readme['contents'][:100]}...")
+            print(f"✅ Successfully read README.md")
+            print(f"   Size: {readme['file_size']} bytes")
+            print(f"   Lines: {readme['line_count']}")
+            print(f"   Preview: {readme['contents'][:100]}...")
         else:
             workflow.logger.warning(f"⚠️ Could not read README: {readme['error']}")
             
