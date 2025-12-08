@@ -2,7 +2,7 @@
 import asyncio
 from temporalio.client import Client
 from temporalio.worker import Worker
-from activities.cloning import setup_repo_with_compose, run_command_in_sandbox, cleanup_sandbox
+from activities.cloning import setup_repo_with_compose, run_command_in_sandbox, cleanup_sandbox, setup_repo_environment, read_file_from_repo
 from workflows.cloneRepo import CodeDevelopmentWorkflow
 
 async def main():
@@ -14,7 +14,7 @@ async def main():
         client,
         task_queue="code-dev-queue",
         workflows=[CodeDevelopmentWorkflow],
-        activities=[setup_repo_with_compose, run_command_in_sandbox, cleanup_sandbox]
+        activities=[setup_repo_environment, read_file_from_repo]
     ):
         # Start workflow
         handle = await client.start_workflow(

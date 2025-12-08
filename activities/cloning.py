@@ -6,11 +6,11 @@ async def setup_repo_environment(repo_url: str, branch: str = "main"):
     """
     Creates a Docker container, clones repo, and sets up dependencies
     """
-    import docker
+    #import docker
     import subprocess
     import tempfile
 
-    client = docker.from_env()
+    # client = docker.from_env()
     
     # Create a temporary directory for the build context
     temp_dir = tempfile.mkdtemp(prefix="repo_sandbox_")
@@ -28,7 +28,15 @@ async def setup_repo_environment(repo_url: str, branch: str = "main"):
             raise Exception(f"Clone failed: {clone_result.stderr}")
         
         repo_path = f"{temp_dir}/repo"
+
+        activity.heartbeat(f"Cloned repo to {repo_path}")
+
+        return {
+            "repo_path": repo_path,
+            "temp_dir": temp_dir
+        }
         
+        """
         # Check if Dockerfile exists
         dockerfile_path = f"{repo_path}/Dockerfile"
         
@@ -66,6 +74,7 @@ async def setup_repo_environment(repo_url: str, branch: str = "main"):
             "repo_path": repo_path,
             "temp_dir": temp_dir
         }
+        """
         
     except Exception as e:
         # Cleanup on failure
@@ -180,3 +189,57 @@ async def cleanup_sandbox(environment: dict):
     except Exception as e:
         print(f"Cleanup warning: {e}")
 
+@activity.defn(name="read_file_from_repo")
+async def read_file_from_repo(environment: dict, file_path: str) -> dict:
+    """
+    Read a file from the cloned repo to prove it's accessible.
+    
+    Args:
+        environment: Dict with 'repo_path', 'container_name', etc.
+        file_path: Relative path to file (e.g., 'README.md', 'src/main.py')
+    
+    Returns:
+        Dict with file contents and metadata
+    """
+    import os
+    
+    activity.heartbeat("Reading file from cloned repo")
+    
+    repo_path = environment['repo_path']
+    full_path = os.path.join(repo_path, file_path)
+    
+    try:
+        # Check if file exists
+        if not os.path.exists(full_path):
+            return {
+                "success": False,
+                "error": f"File not found: {file_path}",
+                "repo_path": repo_path
+            }
+        
+        # Read file contents
+        with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+            contents = f.read()
+        
+        # Get file stats
+        file_size = os.path.getsize(full_path)
+        line_count = len(contents.splitlines())
+        
+        activity.heartbeat(f"Successfully read {file_path}")
+        
+        return {
+            "success": True,
+            "file_path": file_path,
+            "full_path": full_path,
+            "contents": contents[:1000],  # First 1000 chars
+            "file_size": file_size,
+            "line_count": line_count,
+            "repo_path": repo_path
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "file_path": file_path,
+            "repo_path": repo_path
+        }

@@ -9,41 +9,43 @@ class CodeDevelopmentWorkflow:
     
     @workflow.run
     async def run(self, repo_url: str, branch: str = "main"):
-        from activities.cloning import setup_repo_with_compose, run_command_in_sandbox, cleanup_sandbox
+        from activities.cloning import setup_repo_with_compose, run_command_in_sandbox, cleanup_sandbox, setup_repo_environment, read_file_from_repo
         from datetime import timedelta
         
         # Setup environment
         environment = await workflow.execute_activity(
-            setup_repo_with_compose,
+            setup_repo_environment,
             args=[repo_url, branch],
             start_to_close_timeout=timedelta(minutes=15),
             heartbeat_timeout=timedelta(minutes=2)
         )
         
         try:
-            # Run some command to verify it works
-            test_result = await workflow.execute_activity(
-                run_command_in_sandbox,
-                args=[environment["container_id"], "ls -la /workspace"],
-                start_to_close_timeout=timedelta(minutes=5)
+            # Step 4: PROOF - Read a specific file (e.g., README)
+            workflow.logger.info("Reading README.md...")
+            readme = await workflow.execute_activity(
+                read_file_from_repo,
+                args=[environment, "README.md"],
+                start_to_close_timeout=timedelta(minutes=2)
             )
             
-            workflow.logger.info(f"Container ready. ID: {environment['container_id']}")
-            workflow.logger.info(f"Repo path: {environment['repo_path']}")
-            
-            # Wait for signal to cleanup
-            workflow.logger.info("Waiting for cleanup approval signal...")
-            await workflow.wait_condition(lambda: self._cleanup_approved)
-            
-            return {"status": "success", "environment": environment}
+            if readme['success']:
+                workflow.logger.info(f"✅ Successfully read README.md")
+                workflow.logger.info(f"   Size: {readme['file_size']} bytes")
+                workflow.logger.info(f"   Lines: {readme['line_count']}")
+                workflow.logger.info(f"   Preview: {readme['contents'][:100]}...")
+            else:
+                workflow.logger.warning(f"⚠️ Could not read README: {readme['error']}")
             
         finally:
-            # Cleanup only after signal received
+            # Cleanup only after signal received (docker, dont need yet)
+            """
             await workflow.execute_activity(
                 cleanup_sandbox,
                 args=[environment],
                 start_to_close_timeout=timedelta(minutes=5)
             )
+            """
     
     @workflow.signal
     async def approve_cleanup(self):
