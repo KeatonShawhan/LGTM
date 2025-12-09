@@ -4,8 +4,8 @@ from temporalio.common import RetryPolicy
 from activities.cloning import setup_repo_with_compose, setup_repo_environment, read_file_from_repo
 from datetime import timedelta
 
-@workflow.defn(name="CodeDevelopmentWorkflow")
-class CodeDevelopmentWorkflow:
+@workflow.defn(name="CloneRepoWorkflow")
+class CloneRepoWorkflow:
     def __init__(self):
         self.complete = False
     @workflow.run
@@ -19,23 +19,9 @@ class CodeDevelopmentWorkflow:
             heartbeat_timeout=timedelta(minutes=2)
         )
         
-        # Step 4: PROOF - Read a specific file (e.g., README)
-        workflow.logger.info("Reading README.md...")
-        readme = await workflow.execute_activity(
-            read_file_from_repo,
-            args=[environment, "README.md"],
-            start_to_close_timeout=timedelta(minutes=2)
-        )
+        if (environment is None) or ("repo_path" not in environment):
+            workflow.logger.error("❌ Failed to set up repo environment")
+            return
         
-        if readme['success']:
-            workflow.logger.info(f"✅ Successfully read README.md")
-            workflow.logger.info(f"   Size: {readme['file_size']} bytes")
-            workflow.logger.info(f"   Lines: {readme['line_count']}")
-            workflow.logger.info(f"   Preview: {readme['contents'][:100]}...")
-            print(f"✅ Successfully read README.md")
-            print(f"   Size: {readme['file_size']} bytes")
-            print(f"   Lines: {readme['line_count']}")
-            print(f"   Preview: {readme['contents'][:100]}...")
-        else:
-            workflow.logger.warning(f"⚠️ Could not read README: {readme['error']}")
+        return environment
             

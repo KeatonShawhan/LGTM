@@ -3,7 +3,9 @@ import asyncio
 from temporalio.client import Client
 from temporalio.worker import Worker
 from activities.cloning import setup_repo_with_compose, setup_repo_environment, read_file_from_repo
-from workflows.cloneRepo import CodeDevelopmentWorkflow
+from activities.analysis import summarize_repo_activity
+from workflows.cloneRepo import CloneRepoWorkflow
+from workflows.codeAnalysis import CodeAnalysisWorkflow
 
 async def main():
     # Connect to Temporal server
@@ -13,21 +15,33 @@ async def main():
     async with Worker(
         client,
         task_queue="code-dev-queue",
-        workflows=[CodeDevelopmentWorkflow],
-        activities=[setup_repo_environment, read_file_from_repo]
+        workflows=[CloneRepoWorkflow, CodeAnalysisWorkflow],
+        activities=[setup_repo_environment, summarize_repo_activity]
     ):
-        # Start workflow
-        handle = await client.start_workflow(
-            CodeDevelopmentWorkflow.run,
-            args=["https://github.com/KeatonShawhan/SharedSpoons", "main"],
+        # Start workflow to clone repo
+        environment = await client.start_workflow(
+            CloneRepoWorkflow.run,
+            args=["https://github.com/KeatonShawhan/Dig_Champs", "main"],
             id=f"code-dev-{asyncio.get_event_loop().time()}",
             task_queue="code-dev-queue",
         )
         
-        print(f"Started workflow: {handle.id}")
-        print("Workflow is running... Check logs for container ID and repo path")
-        print("\nWhen you're done examining:")
+        print(f"Started workflow to clone repo: {environment.id}")
+
+        environment = await environment.result()
+
+        print(f"Finished workflow to clone repo")
+        print(environment)
         
+        analysis = await client.start_workflow(
+            CodeAnalysisWorkflow.run,
+            args=[environment["repo_path"], "standard", None],
+            id=f"code-analysis-{asyncio.get_event_loop().time()}",
+            task_queue="code-dev-queue",
+        )
+
+        print(f"Started workflow to analyze code: {analysis.id}")
+
         # Keep worker running
         await asyncio.Event().wait()
 

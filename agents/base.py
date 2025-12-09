@@ -12,6 +12,7 @@ class AgentFactory:
         allowed_tools: Optional[List[str]] = None,
         system_prompt: Optional[str] = None,
         max_turns: int = 25,
+        add_dirs: Optional[List[str]] = None,
     ):
         """
         Create a generic agent with given configuration
@@ -29,7 +30,8 @@ class AgentFactory:
             mcp_servers=mcp_servers or {},
             allowed_tools=allowed_tools or [],
             system_prompt=system_prompt,
-            max_turns=max_turns
+            max_turns=max_turns,
+            add_dirs=add_dirs or [],
         )
         
         return ClaudeSDKClient(options=options)

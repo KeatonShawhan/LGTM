@@ -36,46 +36,6 @@ async def setup_repo_environment(repo_url: str, branch: str = "main"):
             "temp_dir": temp_dir
         }
         
-        """
-        # Check if Dockerfile exists
-        dockerfile_path = f"{repo_path}/Dockerfile"
-        
-        # Build Docker image from the repo's Dockerfile
-        activity.heartbeat("Building Docker image from Dockerfile...")
-        
-        image, build_logs = client.images.build(
-            path=repo_path,
-            dockerfile="docker-compose.yml",  # Use the repo's Dockerfile
-            tag=f"repo-sandbox:{repo_url.split('/')[-1].replace('.git', '')}"
-        )
-        
-        # Log build output
-        for log in build_logs:
-            if 'stream' in log:
-                print(log['stream'].strip())
-        
-        # Create and start container
-        activity.heartbeat("Starting container...")
-        
-        container = client.containers.run(
-            image.id,
-            command="sleep infinity",  # Keep container running
-            detach=True,
-            working_dir="/workspace",
-            volumes={
-                repo_path: {"bind": "/workspace", "mode": "rw"}
-            },
-            remove=False
-        )
-        
-        return {
-            "container_id": container.id,
-            "image_id": image.id,
-            "repo_path": repo_path,
-            "temp_dir": temp_dir
-        }
-        """
-        
     except Exception as e:
         # Cleanup on failure
         import shutil
