@@ -30,5 +30,7 @@ class CloneRepoWorkflow:
             heartbeat_timeout=timedelta(minutes=2)
         )
         
+        if environment:
+            self.complete = True
         return environment
             
