@@ -22,7 +22,6 @@ def compose_file(file_path: os.PathLike, queryAgent: QueryAgent):
     assert os.path.isfile(file_path), f"Provided directory and *NOT* filepath: {file_path}"
 
 """
-
 json format
 
 {
@@ -38,6 +37,7 @@ functions: list[dict] -> (empty if directory)
         arguments: list[str] -> in format "argument: type"
         return_type: str
         description: str -> through a call to claude, the function is described in 1-3 sentences (brevity strongly preferred)
+        line_number: int -> starting line for the function
     }
 
 imports: list[str] -> lists the general imports to the file, empty if directory TODO: list or str?
