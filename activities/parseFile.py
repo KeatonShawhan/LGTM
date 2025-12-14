@@ -29,6 +29,48 @@ class FunctionExtractor(cst.CSTVisitor):
         pos = self.get_metadata(PositionProvider, node)
         self.positions.append(pos)
 
+class FileStructureVisitor(cst.CSTVisitor):
+    def __init__(self):
+        self.classes: list[str] = []
+        self.functions: list[str] = []
+        self.imports: list[str] = []
+
+    # ---- Classes ----
+    def visit_ClassDef(self, node: cst.ClassDef):
+        self.classes.append(node.name.value)
+
+    # ---- Functions (top-level only) ----
+    def visit_FunctionDef(self, node: cst.FunctionDef):
+        self.functions.append(node.name.value)
+
+    # ---- Imports ----
+    def visit_Import(self, node: cst.Import):
+        for alias in node.names:
+            if alias.asname:
+                self.imports.append(
+                    f"import {alias.name.value} as {alias.asname.name.value}"
+                )
+            else:
+                self.imports.append(f"import {alias.name.value}")
+
+    def visit_ImportFrom(self, node: cst.ImportFrom):
+        module = (
+            "." * len(node.relative)
+            + node.module.value
+            if node.module
+            else "." * len(node.relative)
+        )
+
+        for alias in node.names:
+            if isinstance(alias, cst.ImportStar):
+                self.imports.append(f"from {module} import *")
+            elif alias.asname:
+                self.imports.append(
+                    f"from {module} import {alias.name.value} as {alias.asname.name.value}"
+                )
+            else:
+                self.imports.append(f"from {module} import {alias.name.value}")
+
 @activity.defn(name="ExtractFunction")
 async def extract_function(
     file_path: PathLike,
@@ -78,6 +120,42 @@ async def extract_function(
         extracted.append("".join(lines[start:end]))
 
     return extracted
+
+@activity.defn(name="GetFileStructure")
+async def get_file_structure(file_path: str | PathLike) -> dict:
+    """
+    Parse a Python file and return its structural outline.
+
+    Returns:
+        {
+            "file": filename,
+            "classes": [...],
+            "functions": [...],
+            "imports": [...]
+        }
+    """
+    import os
+    assert os.path.isfile(file_path), f"extract function was not provided a valid filepath: {file_path}"
+
+    with open(file_path, 'r') as f:
+        try:
+            source = "\n".join(f.readlines())
+        except UnicodeDecodeError as e:
+            print("GET YOUR DAMN EMOJI'S OUT OF MY FILES")
+            raise ValueError(f"Failed to read file {file_path} due to encoding error: {e}") from e
+
+    module = cst.parse_module(source)
+
+    visitor = FileStructureVisitor()
+    module.visit(visitor)
+
+    return {
+        "file": file_path.name,
+        "classes": visitor.classes,
+        "functions": visitor.functions,
+        "imports": visitor.imports,
+    }
+
 
 if __name__ == "__main__":
     import asyncio
