@@ -71,6 +71,8 @@ class FileStructureVisitor(cst.CSTVisitor):
             else:
                 self.imports.append(f"from {module} import {alias.name.value}")
 
+
+
 @activity.defn(name="ExtractFunction")
 async def extract_function(
     file_path: PathLike,
@@ -150,7 +152,7 @@ async def get_file_structure(file_path: str | PathLike) -> dict:
     module.visit(visitor)
 
     return {
-        "file": file_path.name,
+        "file": file_path,
         "classes": visitor.classes,
         "functions": visitor.functions,
         "imports": visitor.imports,
@@ -164,3 +166,5 @@ if __name__ == "__main__":
     funcs = asyncio.run(extract_function(p, "get_repo_path"))
     if funcs:
         print(funcs[0])
+    structure = asyncio.run(get_file_structure(p))
+    print(structure)
