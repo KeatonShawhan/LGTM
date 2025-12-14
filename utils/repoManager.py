@@ -46,16 +46,16 @@ class RepoManager:
         
         # Clone if doesn't exist
         if not repo_path.exists():
-            print(f"📦 Cloning {repo_url}...")
+            print(f"Cloning {repo_url}...")
             subprocess.run(
                 ['git', 'clone', '--branch', branch, clone_url, str(repo_path)],
                 check=True,
                 capture_output=True
             )
-            print(f"✅ Cloned to {repo_path}")
+            print(f"Cloned to {repo_path}")
         else:
             # Pull latest changes
-            print(f"🔄 Updating {repo_path}...")
+            print(f"Updating {repo_path}...")
             subprocess.run(
                 ['git', 'fetch', 'origin', branch],
                 cwd=repo_path,
@@ -68,7 +68,7 @@ class RepoManager:
                 check=True,
                 capture_output=True
             )
-            print(f"✅ Updated to latest")
+            print(f"Updated to latest")
         
         # Get current commit hash
         result = subprocess.run(
@@ -90,7 +90,7 @@ class RepoManager:
         )
         commit_info = result.stdout.strip()
         
-        print(f"📍 Current commit: {commit_info}")
+        print(f"Current commit: {commit_info}")
         
         return str(repo_path), commit_hash
 

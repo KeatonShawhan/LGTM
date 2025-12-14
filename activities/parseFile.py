@@ -1,45 +1,88 @@
 from temporalio import activity
 from os import PathLike
+import libcst as cst
+from libcst.metadata import PositionProvider
 
-@activity.defn(name="get_code_snippet")
-def get_code_snippet(file: PathLike, symbol=None, line=None):
+class FunctionExtractor(cst.CSTVisitor):
+    METADATA_DEPENDENCIES = (PositionProvider,)
+
+    def __init__(self, function_name: str, class_name: str | None = None):
+        self.function_name = function_name
+        self.class_name = class_name
+        self._class_stack = []
+        self.positions = []
+
+    def visit_ClassDef(self, node: cst.ClassDef):
+        self._class_stack.append(node.name.value)
+
+    def leave_ClassDef(self, node: cst.ClassDef):
+        self._class_stack.pop()
+
+    def visit_FunctionDef(self, node: cst.FunctionDef):
+        if node.name.value != self.function_name:
+            return
+
+        if self.class_name:
+            if not self._class_stack or self._class_stack[-1] != self.class_name:
+                return
+
+        pos = self.get_metadata(PositionProvider, node)
+        self.positions.append(pos)
+
+@activity.defn(name="ExtractFunction")
+async def extract_function(
+    file_path: PathLike,
+    function_name: str,
+    class_name: str | None = None,
+) -> list[str]:
     """
-    Docstring for get_code_snippet
-    
-    :param file: PathLike -> full path to the desired file to get the code snippet from
-    :param symbol: str: Name of function or class that needs to be read
-    :param line: int: Line number for function/class header
+    Extract raw source code for matching functions.
+
+    Args:
+        source_code: Full file source
+        function_name: Name of function or method
+        class_name: Optional class scope
+
+    Returns:
+        List of raw source slices (verbatim)
     """
     import os
-    try:
-        assert os.path.isfile(file)
-    except Exception as e:
-        message = f"get_code_snippet was either provided a directory or a non-valid filepath {file}"
-        activity.heartbeat(message)
-        print(message)
-        raise e
-    
-    assert symbol or line, "get_code_snippet must be provided either a symbol or line"
-    
-    with open(file, 'r') as f:
-        lines = f.readlines()
-    
-    import re
+    import libcst as cst
+    from libcst.metadata import PositionProvider
 
-    if symbol:
-        cline = 0
-        while not re.search('( )*def( )+', lines[cline]) and not re.search(symbol, lines[cline]):
-            cline += 1
-        line = cline
 
-    nested_funcs = 0
-    search_nested = r'( )*def( )+'
-    search_return = r'^\s*return\b(?=(?:[^"\'#]|"(?:\\.|[^"])*"|\'(?:\\.|[^\'])*\')*$)'
-    assert re.search(search_nested, lines[line]), f"provided line number {line} does not contain a function defition: \n {lines[line]}"
-    for l in range(line, len(lines)):
-        nested_funcs += 1 if re.search(search_nested, lines[l]) else 0
-        nested_funcs -= 1 if re.search(search_return, lines[l]) else 0
-        if nested_funcs == 0:
-            end_line = l
-            break
-    return "\n".join(lines[line:end_line+1])
+    assert os.path.isfile(file_path), f"extract function was not provided a valid filepath: {file_path}"
+    with open(file_path, 'r') as f:
+        try:
+            source_code = "\n".join(f.readlines())
+        except UnicodeDecodeError as e:
+            print("GET YOUR DAMN EMOJI'S OUT OF MY FILES")
+            raise ValueError(f"Failed to read file {file_path} due to encoding error: {e}") from e
+
+    module = cst.parse_module(source_code)
+    wrapper = cst.MetadataWrapper(module)
+
+    extractor = FunctionExtractor(
+        function_name=function_name,
+        class_name=class_name,
+    )
+
+    wrapper.visit(extractor)
+
+    lines = source_code.splitlines(keepends=True)
+
+    extracted = []
+    for pos in extractor.positions:
+        start = pos.start.line - 1
+        end = pos.end.line
+        extracted.append("".join(lines[start:end]))
+
+    return extracted
+
+if __name__ == "__main__":
+    import asyncio
+
+    p = r'C:\Users\fireo\Documents\LGTM\utils\repoManager.py'
+    funcs = asyncio.run(extract_function(p, "get_repo_path"))
+    if funcs:
+        print(funcs[0])
