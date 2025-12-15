@@ -35,15 +35,15 @@ async def main():
         print(f"Finished workflow to clone repo")
         print(environment)
         
-        # analysis = await client.start_workflow(
-        #     CodeAnalysisWorkflow.run,
-        #     args=[environment["repo_path"], "standard", None],
-        #     id=f"code-analysis-{asyncio.get_event_loop().time()}",
-        #     task_queue="code-dev-queue",
-        #     retry_policy=RetryPolicy(maximum_attempts=2)
-        # )
+        analysis = await client.start_workflow(
+            CodeAnalysisWorkflow.run,
+            args=[environment["repo_path"], "standard", None],
+            id=f"code-analysis-{asyncio.get_event_loop().time()}",
+            task_queue="code-dev-queue",
+            retry_policy=RetryPolicy(maximum_attempts=2)
+        )
 
-        # print(f"Started workflow to analyze code: {analysis.id}")
+        print(f"Started workflow to analyze code: {analysis.id}")
 
         # Keep worker running
         await asyncio.Event().wait()
