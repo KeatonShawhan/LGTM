@@ -25,7 +25,7 @@ async def clone_repo(
     repo_id: str,
     target_dir: Optional[str] = None,
     shallow: bool = True
-) -> Tuple[str, str]:
+):
     """
     Clone a repository at a specific reference.
     

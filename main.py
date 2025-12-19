@@ -7,6 +7,9 @@ from temporalio.common import RetryPolicy
 from workflows.review import ReviewWorkflow
 from workflows.ingestRepositoryWorkflow import IngestRepositoryWorkflow
 from dotenv import load_dotenv
+from activities.resolveCloneable import resolve_cloneable_repo
+from activities.cloneRepo import clone_repo
+from activities.matchCommit import make_local_files_match_commit
 import os
 
 load_dotenv()
@@ -26,7 +29,9 @@ async def review_command(repo: str, ref: str):
             IngestRepositoryWorkflow,
         ],
         activities=[
-
+          resolve_cloneable_repo,
+          clone_repo,
+          make_local_files_match_commit,
         ]
     ):
         # Start the parent workflow - it will orchestrate child workflows internally

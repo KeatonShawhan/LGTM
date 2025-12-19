@@ -47,7 +47,5 @@ class ReviewWorkflow:
 
         workflow.logger.info("Review workflow completed successfully")
         
-        return {
-            
-        }
+        return environment
 

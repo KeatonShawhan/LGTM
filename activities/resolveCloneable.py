@@ -77,11 +77,11 @@ def generate_repo_id(repo_url: str) -> str:
     return hash_obj.hexdigest()[:16]
 
 @activity.defn(name='resolveCloneableRepo')
-def resolve_cloneable_repo(
+async def resolve_cloneable_repo(
     repo_url: str, 
     reference: Optional[str] = None,
     use_ssh: bool = False
-) -> Tuple[str, str, str]:
+):
     """Resolve a GitHub repository URL and reference to ensure it's cloneable."""
     try:
         normalized_url = normalize_github_url(repo_url, use_ssh=use_ssh)
