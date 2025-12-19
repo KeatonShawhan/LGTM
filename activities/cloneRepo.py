@@ -2,7 +2,7 @@ from temporalio import activity
 from typing import Tuple, Optional, Dict
 import tempfile
 import subprocess
-
+import re
 
 def get_commit_sha(repo_path: str) -> str:
     """Get the current commit SHA from a cloned repository."""
@@ -17,6 +17,10 @@ def get_commit_sha(repo_path: str) -> str:
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Failed to get commit SHA: {e.stderr}")
+
+def is_commit_sha(reference: str) -> bool:
+    """Check if a reference looks like a commit SHA."""
+    return bool(re.match(r'^[0-9a-f]{7,40}', reference))
 
 @activity.defn(name="cloneRepo")
 async def clone_repo(
@@ -50,15 +54,22 @@ async def clone_repo(
     else:
         clone_path = target_dir
         Path(clone_path).mkdir(parents=True, exist_ok=True)
-    
+
+
     try:
         # Build clone command
         clone_cmd = ['git', 'clone']
         
-        if shallow:
-            clone_cmd.extend(['--depth', '1'])
-        
-        clone_cmd.extend([normalized_url, clone_path])
+        if is_commit_sha(reference):
+            # Clone without specifying branch, then checkout the specific commit
+            if not shallow:
+                clone_cmd.append('--no-single-branch')
+            clone_cmd.extend([normalized_url, clone_path])
+        else:
+            # For branches and tags, use -b flag
+            if shallow:
+                clone_cmd.extend(['--depth', '1'])
+            clone_cmd.extend(['-b', reference, normalized_url, clone_path])
         
         # Execute clone
         result = subprocess.run(

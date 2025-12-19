@@ -87,11 +87,11 @@ async def resolve_cloneable_repo(
         normalized_url = normalize_github_url(repo_url, use_ssh=use_ssh)
         
         if not verify_remote_repo(normalized_url):
-            return normalized_url, False, "Repository does not exist or is not accessible"
+            raise ValueError(normalized_url, False, "Repository does not exist or is not accessible")
         
         if reference:
             if not verify_reference_exists(normalized_url, reference):
-                return normalized_url, False, f"Reference '{reference}' not found"
+                raise ValueError(normalized_url, False, f"Reference '{reference}' not found")
         
         repo_id = generate_repo_id(repo_url)
         return normalized_url, repo_id, None
