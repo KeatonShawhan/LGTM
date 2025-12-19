@@ -1,5 +1,8 @@
 from temporalio import workflow
 from datetime import timedelta
+from activities.resolveCloneable import resolve_cloneable_repo
+from activities.cloneRepo import clone_repo
+from activities.matchCommit import make_local_files_match_commit
 
 @workflow.defn(name="ingestRepositoryWorkflow")
 class IngestRepositoryWorkflow:
@@ -8,8 +11,6 @@ class IngestRepositoryWorkflow:
 
     @workflow.run
     async def run(self, repo_url: str, reference: str):
-        from activities.resolveCloneable import resolve_cloneable_repo
-        from activities.cloneRepo import clone_repo
 
         normalized_url, repo_id, error = await workflow.execute_activity(
             resolve_cloneable_repo,
