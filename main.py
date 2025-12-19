@@ -4,10 +4,8 @@ import argparse
 from temporalio.client import Client
 from temporalio.worker import Worker
 from temporalio.common import RetryPolicy
-from activities.cloning import setup_python_env, setup_repo_environment, remove_temp_repo
-from activities.analysis import summarize_repo_activity
-from workflows.cloneRepo import CloneRepoWorkflow
-from workflows.codeAnalysis import CodeAnalysisWorkflow
+from workflows.review import ReviewWorkflow
+from workflows.ingestRepositoryWorkflow import IngestRepositoryWorkflow
 from dotenv import load_dotenv
 import os
 
@@ -18,53 +16,39 @@ async def review_command(repo: str, ref: str):
     """Execute the review workflow for a given repository and reference"""
     # Connect to Temporal server
     client = await Client.connect("localhost:7233")
-    
-    # Run worker and workflows
+    # Register ALL workflows (parent + children) and activities in the worker
+    # The parent workflow will orchestrate the child workflows internally
     async with Worker(
         client,
         task_queue="code-dev-queue",
-        workflows=[CloneRepoWorkflow, CodeAnalysisWorkflow],
-        activities=[setup_repo_environment, setup_python_env, summarize_repo_activity, remove_temp_repo]
+        workflows=[
+            ReviewWorkflow,  # Parent workflow (user-facing)
+            IngestRepositoryWorkflow,
+        ],
+        activities=[
+
+        ]
     ):
-        # Start workflow to clone repo
-        print(f"Cloning repository: {repo} (ref: {ref})")
-        clone_handle = await client.start_workflow(
-            CloneRepoWorkflow.run,
+        # Start the parent workflow - it will orchestrate child workflows internally
+        print(f"Starting review for repository: {repo} (ref: {ref})")
+        review_handle = await client.start_workflow(
+            ReviewWorkflow.run,
             args=[repo, ref],
-            id=f"code-dev-{asyncio.get_event_loop().time()}",
-            task_queue="code-dev-queue",
-        )
-        
-        print(f"Started workflow to clone repo: {clone_handle.id}")
-        
-        # Wait for clone to complete
-        environment = await clone_handle.result()
-        
-        if not environment or "repo_path" not in environment:
-            print("Failed to clone repository")
-            return
-        
-        print(f"Repository cloned successfully to: {environment['repo_path']}")
-        
-        # Start code analysis workflow
-        print(f"🔍 Starting code analysis...")
-        analysis_handle = await client.start_workflow(
-            CodeAnalysisWorkflow.run,
-            args=[environment["repo_path"], "standard", None],
-            id=f"code-analysis-{asyncio.get_event_loop().time()}",
+            id=f"review-{asyncio.get_event_loop().time()}",
             task_queue="code-dev-queue",
             retry_policy=RetryPolicy(maximum_attempts=2)
         )
         
-        print(f"Started workflow to analyze code: {analysis_handle.id}")
+        print(f"Started review workflow: {review_handle.id}")
         
-        # Wait for analysis to complete
-        result = await analysis_handle.result()
-        
-        print(f"\nReview Complete!")
+        # Wait for the entire review process to complete
+        result = await review_handle.result()
+
         print(f"{'='*60}")
-        print(result)
+        print(f"Review Complete!")
         print(f"{'='*60}")
+
+        print(f"Result: {result}")
 
 
 def main():
