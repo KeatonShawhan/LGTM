@@ -59,12 +59,13 @@ async def clone_repo(
     try:
         # Build clone command
         clone_cmd = ['git', 'clone']
-        
+        commit_sha = None
         if is_commit_sha(reference):
             # Clone without specifying branch, then checkout the specific commit
             if not shallow:
                 clone_cmd.append('--no-single-branch')
             clone_cmd.extend([normalized_url, clone_path])
+            commit_sha = reference
         else:
             # For branches and tags, use -b flag
             if shallow:
@@ -80,7 +81,8 @@ async def clone_repo(
         )
         activity.heartbeat(result)
         print(result)
-        commit_sha = get_commit_sha(clone_path)
+        if not commit_sha:
+            commit_sha = get_commit_sha(clone_path)
         return clone_path, commit_sha
         
     except subprocess.CalledProcessError as e:
