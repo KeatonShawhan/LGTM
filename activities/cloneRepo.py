@@ -73,16 +73,19 @@ async def clone_repo(
             clone_cmd.extend(['-b', reference, normalized_url, clone_path])
         
         # Execute clone
+        activity.heartbeat(f"Cloning {normalized_url} to {clone_path}")
         result = subprocess.run(
             clone_cmd,
             check=True,
             capture_output=True,
             text=True
         )
-        activity.heartbeat(result)
-        print(result)
+        
+        # Get the commit SHA
         if not commit_sha:
             commit_sha = get_commit_sha(clone_path)
+        
+        activity.heartbeat(f"Clone complete: {clone_path} at {commit_sha}")
         return clone_path, commit_sha
         
     except subprocess.CalledProcessError as e:
