@@ -58,7 +58,7 @@ async def clone_repo(
         if shallow:
             clone_cmd.extend(['--depth', '1'])
         
-        clone_cmd.extend(['-b', reference, normalized_url, clone_path])
+        clone_cmd.extend([normalized_url, clone_path])
         
         # Execute clone
         result = subprocess.run(
@@ -67,7 +67,8 @@ async def clone_repo(
             capture_output=True,
             text=True
         )
-        
+        activity.heartbeat(result)
+        print(result)
         commit_sha = get_commit_sha(clone_path)
         return clone_path, commit_sha
         
@@ -77,10 +78,10 @@ async def clone_repo(
         if target_dir is None:
             import shutil
             shutil.rmtree(clone_path, ignore_errors=True)
-        return None, None
+        raise subprocess.CalledProcessError(e)
     except Exception as e:
         print(f"Unexpected error during clone: {str(e)}")
         if target_dir is None:
             import shutil
             shutil.rmtree(clone_path, ignore_errors=True)
-        return None, None
+        raise Exception(e)

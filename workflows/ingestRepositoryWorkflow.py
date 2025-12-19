@@ -1,4 +1,5 @@
 from temporalio import workflow
+from temporalio.common import RetryPolicy
 from datetime import timedelta
 from activities.resolveCloneable import resolve_cloneable_repo
 from activities.cloneRepo import clone_repo
@@ -17,6 +18,7 @@ class IngestRepositoryWorkflow:
             args = [repo_url, reference],
             start_to_close_timeout=timedelta(minutes=1),
             heartbeat_timeout=timedelta(minutes=2),
+            retry_policy=RetryPolicy(maximum_attempts=1)
         )
 
         if error or not repo_id:
@@ -27,6 +29,7 @@ class IngestRepositoryWorkflow:
             args = [normalized_url, reference, repo_id],
             start_to_close_timeout=timedelta(minutes=1),
             heartbeat_timeout=timedelta(minutes=2),
+            retry_policy=RetryPolicy(maximum_attempts=1)
         )
         
         if not clone_path or not commit_sha:
