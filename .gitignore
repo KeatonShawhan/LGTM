@@ -1,3 +1,14 @@
 .env
 sandbox
 sandbox/*
+# Python temp files
+__pycache__/
+*.py[cod]
+
+# Cython artifacts
+*.c
+*.cpp
+*.so
+*.pyd
+build/
+cython_debug/
