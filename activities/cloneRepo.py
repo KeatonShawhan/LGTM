@@ -79,6 +79,10 @@ async def clone_repo(
         # Check if it's a relative reference
         is_relative, base_ref = is_relative_reference(reference)
         
+        # Determine if we need to checkout after cloning
+        needs_checkout = False
+        checkout_ref = None
+        
         # Build clone command
         clone_cmd = ['git', 'clone']
         if is_commit_sha(reference):
@@ -86,8 +90,17 @@ async def clone_repo(
             if not shallow:
                 clone_cmd.append('--no-single-branch')
             clone_cmd.extend([normalized_url, clone_path])
+            needs_checkout = True
+            checkout_ref = reference
+        elif is_relative:
+            # For relative references, clone the base reference first
+            if shallow:
+                clone_cmd.extend(['--depth', '1'])
+            clone_cmd.extend(['-b', base_ref, normalized_url, clone_path])
+            needs_checkout = True
+            checkout_ref = reference  # Checkout the full relative reference
         else:
-            # For branches and tags, use -b flag
+            # For regular branches and tags, use -b flag
             if shallow:
                 clone_cmd.extend(['--depth', '1'])
             clone_cmd.extend(['-b', reference, normalized_url, clone_path])
