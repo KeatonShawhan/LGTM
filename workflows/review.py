@@ -2,6 +2,7 @@
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from workflows.ingestRepositoryWorkflow import IngestRepositoryWorkflow
+from workflows.computeChangeSetWorkflow import ComputeChangeSetWorkflow
 from datetime import timedelta
 
 
@@ -37,8 +38,15 @@ class ReviewWorkflow:
         workflow.logger.info(f"Repository cloned to: {environment['repo_path']}")
         
         # Step 2: Compute the code change
-
-
+        workflow.logger.info("Step 2: Computing git diff")
+        diff = await workflow.execute_child_workflow(
+            ComputeChangeSetWorkflow.run,
+            args=[environment['repo_path']],
+            id=f"clone-{workflow.info().workflow_id}",
+            task_queue="code-dev-queue",
+            retry_policy=RetryPolicy(maximum_attempts=2)
+        )
+        print(diff)
         # Step 3: Build the code context (Librarian)
         
 
