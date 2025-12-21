@@ -22,7 +22,24 @@ def is_commit_sha(reference: str) -> bool:
     """Check if a reference looks like a commit SHA."""
     return bool(re.match(r'^[0-9a-f]{7,40}', reference))
 
-@activity.defn(name="cloneRepo")
+def is_relative_reference(reference: str) -> tuple[bool, str]:
+    """
+    Check if reference is relative and return (is_relative, base_ref).
+    
+    Examples:
+    - main~3 -> (True, 'main')
+    - HEAD^2~1 -> (True, 'HEAD')
+    - v1.0.0 -> (False, 'v1.0.0')
+    """
+    # Pattern matches: base_name followed by any combination of ~N or ^N
+    pattern = r'^([\w\-\/\.]+)([~^]\d*)+$'
+    match = re.match(pattern, reference)
+    
+    if match:
+        return True, match.group(1)
+    return False, reference
+
+@activity.defn(name="clone_repo")
 async def clone_repo(
     normalized_url: str, 
     reference: str,
@@ -35,7 +52,7 @@ async def clone_repo(
     
     Args:
         normalized_url: GitHub repository URL (various formats accepted)
-        reference: Branch name, tag, or commit SHA
+        reference: Branch name, tag, commit SHA, or relative reference (e.g., main~3)
         repo_id: hashed version of the repo_url
         target_dir: Directory to clone into. If None, uses a temp directory
         shallow: Whether to do a shallow clone (--depth 1)
@@ -45,6 +62,7 @@ async def clone_repo(
     """
     import subprocess
     from pathlib import Path
+    
     # Determine target directory
     if target_dir is None:
         # Create a temp directory that won't be auto-deleted
@@ -55,17 +73,30 @@ async def clone_repo(
         clone_path = target_dir
         Path(clone_path).mkdir(parents=True, exist_ok=True)
 
-
     try:
+        # Check if it's a relative reference
+        is_relative, base_ref = is_relative_reference(reference)
+        
         # Build clone command
         clone_cmd = ['git', 'clone']
-        commit_sha = None
+        needs_checkout = False
+        checkout_ref = None
+        
         if is_commit_sha(reference):
             # Clone without specifying branch, then checkout the specific commit
             if not shallow:
                 clone_cmd.append('--no-single-branch')
             clone_cmd.extend([normalized_url, clone_path])
-            commit_sha = reference
+            needs_checkout = True
+            checkout_ref = reference
+            
+        elif is_relative:
+            # For relative references, clone the base ref then checkout the relative ref
+            # Can't use shallow clone with relative refs (need history)
+            clone_cmd.extend(['-b', base_ref, normalized_url, clone_path])
+            needs_checkout = True
+            checkout_ref = reference
+            
         else:
             # For branches and tags, use -b flag
             if shallow:
@@ -81,9 +112,19 @@ async def clone_repo(
             text=True
         )
         
+        # If we need to checkout a specific commit or relative reference
+        if needs_checkout:
+            activity.heartbeat(f"Checking out {checkout_ref}")
+            checkout_result = subprocess.run(
+                ['git', 'checkout', checkout_ref],
+                cwd=clone_path,
+                check=True,
+                capture_output=True,
+                text=True
+            )
+        
         # Get the commit SHA
-        if not commit_sha:
-            commit_sha = get_commit_sha(clone_path)
+        commit_sha = get_commit_sha(clone_path)
         
         activity.heartbeat(f"Clone complete: {clone_path} at {commit_sha}")
         return clone_path, commit_sha
@@ -94,10 +135,10 @@ async def clone_repo(
         if target_dir is None:
             import shutil
             shutil.rmtree(clone_path, ignore_errors=True)
-        raise subprocess.CalledProcessError(e)
+        raise subprocess.CalledProcessError(e.returncode, e.cmd, e.output, e.stderr)
     except Exception as e:
         print(f"Unexpected error during clone: {str(e)}")
         if target_dir is None:
             import shutil
             shutil.rmtree(clone_path, ignore_errors=True)
-        raise Exception(e)
+        raise e
