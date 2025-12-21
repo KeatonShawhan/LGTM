@@ -14,3 +14,7 @@ __pycache__/
 *.pyd
 build/
 cython_debug/
+
+# Cache directory (repositories and metadata)
+cache/repos/
+cache/repos/*

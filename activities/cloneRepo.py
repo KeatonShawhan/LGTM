@@ -27,6 +27,7 @@ async def clone_repo(
     normalized_url: str, 
     reference: str,
     repo_id: str,
+    commit_sha: Optional[str] = None,
     target_dir: Optional[str] = None,
     shallow: bool = True
 ):
@@ -37,6 +38,7 @@ async def clone_repo(
         normalized_url: GitHub repository URL (various formats accepted)
         reference: Branch name, tag, or commit SHA
         repo_id: hashed version of the repo_url
+        commit_sha: Optional commit SHA for verification (if provided, will verify after clone)
         target_dir: Directory to clone into. If None, uses a temp directory
         shallow: Whether to do a shallow clone (--depth 1)
     
@@ -59,13 +61,11 @@ async def clone_repo(
     try:
         # Build clone command
         clone_cmd = ['git', 'clone']
-        commit_sha = None
         if is_commit_sha(reference):
             # Clone without specifying branch, then checkout the specific commit
             if not shallow:
                 clone_cmd.append('--no-single-branch')
             clone_cmd.extend([normalized_url, clone_path])
-            commit_sha = reference
         else:
             # For branches and tags, use -b flag
             if shallow:
@@ -81,12 +81,33 @@ async def clone_repo(
             text=True
         )
         
-        # Get the commit SHA
-        if not commit_sha:
-            commit_sha = get_commit_sha(clone_path)
+        # Get the commit SHA from the cloned repo
+        actual_commit_sha = get_commit_sha(clone_path)
         
-        activity.heartbeat(f"Clone complete: {clone_path} at {commit_sha}")
-        return clone_path, commit_sha
+        # If commit_sha was provided, verify it matches
+        if commit_sha and actual_commit_sha != commit_sha:
+            # Try to resolve the provided commit_sha to full SHA
+            try:
+                resolved_result = subprocess.run(
+                    ['git', 'rev-parse', commit_sha],
+                    cwd=clone_path,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                resolved_sha = resolved_result.stdout.strip()
+                if resolved_sha == actual_commit_sha:
+                    commit_sha = resolved_sha
+                else:
+                    activity.heartbeat(f"Warning: Expected commit {commit_sha}, got {actual_commit_sha}")
+            except subprocess.CalledProcessError:
+                activity.heartbeat(f"Warning: Could not verify commit SHA {commit_sha}")
+        
+        # Use provided commit_sha if available, otherwise use actual
+        final_commit_sha = commit_sha if commit_sha else actual_commit_sha
+        
+        activity.heartbeat(f"Clone complete: {clone_path} at {final_commit_sha}")
+        return clone_path, final_commit_sha
         
     except subprocess.CalledProcessError as e:
         print(f"Clone failed: {e.stderr}")

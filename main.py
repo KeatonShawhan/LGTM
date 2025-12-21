@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from activities.resolveCloneable import resolve_cloneable_repo
 from activities.cloneRepo import clone_repo
 from activities.matchCommit import make_local_files_match_commit
+from activities.cacheRepo import check_repo_cache, store_repo_cache
 import os
 
 load_dotenv()
@@ -32,6 +33,8 @@ async def review_command(repo: str, ref: str):
           resolve_cloneable_repo,
           clone_repo,
           make_local_files_match_commit,
+          check_repo_cache,
+          store_repo_cache,
         ]
     ):
         # Start the parent workflow - it will orchestrate child workflows internally
