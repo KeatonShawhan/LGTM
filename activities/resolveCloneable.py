@@ -60,9 +60,9 @@ def verify_reference_exists(repo_url: str, reference: str) -> bool:
         if re.match(r'^[0-9a-f]{7,40}$', reference):
             return True
         
-        return False
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return False
+        raise ValueError()
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        raise e
 
 def generate_repo_id(repo_url: str) -> str:
     """Generate a unique repo_id by hashing the normalized repo URL."""
@@ -97,7 +97,7 @@ async def resolve_cloneable_repo(
         return normalized_url, repo_id, None
         
     except ValueError as e:
-        return repo_url, False, str(e)
+        raise e
     except Exception as e:
-        return repo_url, False, f"Unexpected error: {str(e)}"
+        raise e
 
