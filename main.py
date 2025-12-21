@@ -6,11 +6,13 @@ from temporalio.worker import Worker
 from temporalio.common import RetryPolicy
 from workflows.review import ReviewWorkflow
 from workflows.ingestRepositoryWorkflow import IngestRepositoryWorkflow
+from workflows.computeChangeSetWorkflow import ComputeChangeSetWorkflow
 from dotenv import load_dotenv
 from activities.resolveCloneable import resolve_cloneable_repo
 from activities.cloneRepo import clone_repo
 from activities.matchCommit import make_local_files_match_commit
 from activities.cacheRepo import check_repo_cache, store_repo_cache
+from activities.gitDiff import get_diff_from_main
 import os
 
 load_dotenv()
@@ -28,6 +30,8 @@ async def review_command(repo: str, ref: str):
         workflows=[
             ReviewWorkflow,  # Parent workflow (user-facing)
             IngestRepositoryWorkflow,
+            ComputeChangeSetWorkflow,
+
         ],
         activities=[
           resolve_cloneable_repo,
@@ -35,6 +39,7 @@ async def review_command(repo: str, ref: str):
           make_local_files_match_commit,
           check_repo_cache,
           store_repo_cache,
+          get_diff_from_main,
         ]
     ):
         # Start the parent workflow - it will orchestrate child workflows internally
