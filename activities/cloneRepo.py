@@ -22,7 +22,24 @@ def is_commit_sha(reference: str) -> bool:
     """Check if a reference looks like a commit SHA."""
     return bool(re.match(r'^[0-9a-f]{7,40}', reference))
 
-@activity.defn(name="cloneRepo")
+def is_relative_reference(reference: str) -> tuple[bool, str]:
+    """
+    Check if reference is relative and return (is_relative, base_ref).
+    
+    Examples:
+    - main~3 -> (True, 'main')
+    - HEAD^2~1 -> (True, 'HEAD')
+    - v1.0.0 -> (False, 'v1.0.0')
+    """
+    # Pattern matches: base_name followed by any combination of ~N or ^N
+    pattern = r'^([\w\-\/\.]+)([~^]\d*)+$'
+    match = re.match(pattern, reference)
+    
+    if match:
+        return True, match.group(1)
+    return False, reference
+
+@activity.defn(name="clone_repo")
 async def clone_repo(
     normalized_url: str, 
     reference: str,
@@ -36,7 +53,7 @@ async def clone_repo(
     
     Args:
         normalized_url: GitHub repository URL (various formats accepted)
-        reference: Branch name, tag, or commit SHA
+        reference: Branch name, tag, commit SHA, or relative reference (e.g., main~3)
         repo_id: hashed version of the repo_url
         commit_sha: Optional commit SHA for verification (if provided, will verify after clone)
         target_dir: Directory to clone into. If None, uses a temp directory
@@ -47,6 +64,7 @@ async def clone_repo(
     """
     import subprocess
     from pathlib import Path
+    
     # Determine target directory
     if target_dir is None:
         # Create a temp directory that won't be auto-deleted
@@ -57,8 +75,10 @@ async def clone_repo(
         clone_path = target_dir
         Path(clone_path).mkdir(parents=True, exist_ok=True)
 
-
     try:
+        # Check if it's a relative reference
+        is_relative, base_ref = is_relative_reference(reference)
+        
         # Build clone command
         clone_cmd = ['git', 'clone']
         if is_commit_sha(reference):
@@ -80,6 +100,17 @@ async def clone_repo(
             capture_output=True,
             text=True
         )
+        
+        # If we need to checkout a specific commit or relative reference
+        if needs_checkout:
+            activity.heartbeat(f"Checking out {checkout_ref}")
+            checkout_result = subprocess.run(
+                ['git', 'checkout', checkout_ref],
+                cwd=clone_path,
+                check=True,
+                capture_output=True,
+                text=True
+            )
         
         # Get the commit SHA from the cloned repo
         actual_commit_sha = get_commit_sha(clone_path)
@@ -115,10 +146,10 @@ async def clone_repo(
         if target_dir is None:
             import shutil
             shutil.rmtree(clone_path, ignore_errors=True)
-        raise subprocess.CalledProcessError(e)
+        raise subprocess.CalledProcessError(e.returncode, e.cmd, e.output, e.stderr)
     except Exception as e:
         print(f"Unexpected error during clone: {str(e)}")
         if target_dir is None:
             import shutil
             shutil.rmtree(clone_path, ignore_errors=True)
-        raise Exception(e)
+        raise e
