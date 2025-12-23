@@ -33,6 +33,7 @@ def normalize_github_url(url: str, use_ssh: bool = False) -> str:
 def verify_remote_repo(repo_url: str) -> bool:
     """Verify that a remote repository exists and is accessible."""
     try:
+            
         result = subprocess.run(
             ['git', 'ls-remote', '--heads', repo_url],
             capture_output=True,
@@ -121,6 +122,9 @@ def resolve_reference_to_commit_sha(repo_url: str, reference: str) -> str:
     if re.match(r'^[0-9a-f]{40}$', reference):
         return reference
     
+    if is_relative_reference(reference):
+        return reference
+    
     # If it's a short commit SHA (7-39 chars), we can't resolve it without cloning
     # For now, return it as-is - the clone will resolve it properly
     # Note: This means cache won't work for short SHAs until after first clone
@@ -146,7 +150,8 @@ def resolve_reference_to_commit_sha(repo_url: str, reference: str) -> str:
         
         # If we can't resolve it, return as-is (will be resolved during clone)
         return reference
-    
+
+
     # For branches and tags, use ls-remote to get the commit SHA
     try:
         result = subprocess.run(
@@ -187,10 +192,28 @@ def generate_repo_id(repo_url: str) -> str:
     hash_obj = hashlib.sha256(normalized_url.encode('utf-8'))
     return hash_obj.hexdigest()[:16]
 
+def is_relative_reference(reference: str) -> tuple[bool, str]:
+    """
+    Check if reference is relative and return (is_relative, base_ref).
+    
+    Examples:
+    - main~3 -> (True, 'main')
+    - HEAD^2~1 -> (True, 'HEAD')
+    - v1.0.0 -> (False, 'v1.0.0')
+    """
+    # Pattern matches: base_name followed by any combination of ~N or ^N
+    pattern = r'^([\w\-\/\.]+)([~^]\d*)+$'
+    match = re.match(pattern, reference)
+    
+    if match:
+        return True, match.group(1)
+    return False, reference
+
+
 @activity.defn(name='resolveCloneableRepo')
 async def resolve_cloneable_repo(
     repo_url: str, 
-    reference: Optional[str] = None,
+    reference: str,
     use_ssh: bool = False
 ):
     """
@@ -212,7 +235,7 @@ async def resolve_cloneable_repo(
         ValueError: If repository is not accessible, reference not found, or other validation errors
     """
     normalized_url = normalize_github_url(repo_url, use_ssh=use_ssh)
-    
+    print(normalized_url)
     if not verify_remote_repo(normalized_url):
         raise ValueError("Repository does not exist or is not accessible")
     

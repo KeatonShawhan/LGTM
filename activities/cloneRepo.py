@@ -39,6 +39,35 @@ def is_relative_reference(reference: str) -> tuple[bool, str]:
         return True, match.group(1)
     return False, reference
 
+def extract_depth_from_reference(reference: str) -> int:
+    """
+    Extract the required clone depth from a relative reference.
+    
+    Examples:
+        main~20 -> 25 (need 20 commits back plus the base, with buffer)
+        HEAD^2 -> 5 (need parent commits)
+        main~5^2 -> 10 (conservative estimate)
+    
+    Returns:
+        Minimum depth needed to resolve the reference (with buffer)
+    """
+    import re
+    
+    # Find all numeric values after ~ or ^
+    numbers = re.findall(r'[~^](\d+)', reference)
+    
+    if not numbers:
+        # No explicit number (e.g., HEAD^ or main^), need at least parent
+        return 5
+    
+    # Sum all the numbers
+    total = sum(int(n) for n in numbers)
+    
+    # Add buffer of at least 5 or 20% more, whichever is larger
+    buffer = max(5, int(total * 0.2))
+    
+    return total + buffer + 1  # +1 for the base commit itself
+
 @activity.defn(name="clone_repo")
 async def clone_repo(
     normalized_url: str, 
@@ -93,10 +122,9 @@ async def clone_repo(
             needs_checkout = True
             checkout_ref = reference
         elif is_relative:
-            # For relative references, clone the base reference first
-            if shallow:
-                clone_cmd.extend(['--depth', '1'])
-            clone_cmd.extend(['-b', base_ref, normalized_url, clone_path])
+            # For relative references, we need enough depth to navigate back
+            depth = extract_depth_from_reference(reference)
+            clone_cmd.extend(['--depth', str(depth), '-b', base_ref, normalized_url, clone_path])
             needs_checkout = True
             checkout_ref = reference  # Checkout the full relative reference
         else:
