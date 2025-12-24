@@ -3,6 +3,8 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 from workflows.ingestRepositoryWorkflow import IngestRepositoryWorkflow
 from workflows.computeChangeSetWorkflow import ComputeChangeSetWorkflow
+from workflows.buildCodeContextWorkflow import BuildCodeContextWorkflow
+from utils.dataclasses import RepoHandle
 from datetime import timedelta
 
 
@@ -39,16 +41,42 @@ class ReviewWorkflow:
         
         # Step 2: Compute the code change
         workflow.logger.info("Step 2: Computing git diff")
-        diff = await workflow.execute_child_workflow(
+        change_set = await workflow.execute_child_workflow(
             ComputeChangeSetWorkflow.run,
             args=[environment['repo_path']],
-            id=f"clone-{workflow.info().workflow_id}",
+            id=f"changeset-{workflow.info().workflow_id}",
             task_queue="code-dev-queue",
             retry_policy=RetryPolicy(maximum_attempts=2)
         )
-        print(diff)
-        # Step 3: Build the code context (Librarian)
         
+        if not change_set:
+            workflow.logger.error("Failed to compute changeset")
+            raise Exception("Failed to compute changeset")
+        
+        # Workflow outputs are serialized to dicts by Temporal
+        workflow.logger.info(f"Computed changeset with {len(change_set['files'])} changed files")
+        
+        # Step 3: Build the code context (Librarian)
+        workflow.logger.info("Step 3: Building code context...")
+        repo_handle = RepoHandle(
+            repo_id=environment['repo_id'],
+            repo_path=environment['repo_path'],
+            commit_sha=environment['commit_sha']
+        )
+        
+        code_context = await workflow.execute_child_workflow(
+            BuildCodeContextWorkflow.run,
+            args=[repo_handle, change_set],
+            id=f"build-context-{workflow.info().workflow_id}",
+            task_queue="code-dev-queue",
+            retry_policy=RetryPolicy(maximum_attempts=2)
+        )
+        
+        if not code_context:
+            workflow.logger.error("Failed to build code context")
+            raise Exception("Failed to build code context")
+        
+        workflow.logger.info("Code context built successfully")
 
         # Step 4: Generate the review
 

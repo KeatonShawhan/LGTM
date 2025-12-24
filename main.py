@@ -7,6 +7,7 @@ from temporalio.common import RetryPolicy
 from workflows.review import ReviewWorkflow
 from workflows.ingestRepositoryWorkflow import IngestRepositoryWorkflow
 from workflows.computeChangeSetWorkflow import ComputeChangeSetWorkflow
+from workflows.buildCodeContextWorkflow import BuildCodeContextWorkflow
 from dotenv import load_dotenv
 from activities.resolveCloneable import resolve_cloneable_repo
 from activities.cloneRepo import clone_repo
@@ -31,7 +32,7 @@ async def review_command(repo: str, ref: str):
             ReviewWorkflow,  # Parent workflow (user-facing)
             IngestRepositoryWorkflow,
             ComputeChangeSetWorkflow,
-
+            BuildCodeContextWorkflow,
         ],
         activities=[
           resolve_cloneable_repo,

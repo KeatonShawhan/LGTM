@@ -5,9 +5,6 @@ from temporalio.common import RetryPolicy
 
 @workflow.defn(name="computeChangeSetWorkflow")
 class ComputeChangeSetWorkflow:
-    def __init__(self):
-        self.complete = False
-    
     @workflow.run
     async def run(self, repo_path: str, target_branch: str = "main"):
         
@@ -22,5 +19,4 @@ class ComputeChangeSetWorkflow:
         if not changeSet:
             raise ValueError("Failed to generate changeset.")
 
-        self.complete = True
         return changeSet

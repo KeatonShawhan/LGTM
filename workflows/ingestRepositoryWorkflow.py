@@ -8,9 +8,6 @@ from activities.cacheRepo import check_repo_cache, store_repo_cache
 
 @workflow.defn(name="ingestRepositoryWorkflow")
 class IngestRepositoryWorkflow:
-    def __init__(self):
-        self.complete = False
-
     @workflow.run
     async def run(self, repo_url: str, reference: str):
 
