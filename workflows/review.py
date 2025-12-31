@@ -25,7 +25,7 @@ class ReviewWorkflow:
         
         # Step 1: Ingest the repository
         workflow.logger.info("Step 1: Ingesting repository...")
-        environment = await workflow.execute_child_workflow(
+        repo_handle = await workflow.execute_child_workflow(
             IngestRepositoryWorkflow.run,
             args=[repo, ref],
             id=f"clone-{workflow.info().workflow_id}",
@@ -33,17 +33,17 @@ class ReviewWorkflow:
             retry_policy=RetryPolicy(maximum_attempts=2),
         )
         
-        if not environment or "repo_path" not in environment:
+        if not repo_handle or not repo_handle.repo_path:
             workflow.logger.error("Failed to ingest repository")
             raise Exception("Failed to ingest repository")
         
-        workflow.logger.info(f"Repository cloned to: {environment['repo_path']}")
+        workflow.logger.info(f"Repository cloned to: {repo_handle.repo_path}")
         
         # Step 2: Compute the code change
         workflow.logger.info("Step 2: Computing git diff")
         change_set = await workflow.execute_child_workflow(
             ComputeChangeSetWorkflow.run,
-            args=[environment['repo_path']],
+            args=[repo_handle.repo_path],
             id=f"changeset-{workflow.info().workflow_id}",
             task_queue="code-dev-queue",
             retry_policy=RetryPolicy(maximum_attempts=2)
@@ -58,11 +58,6 @@ class ReviewWorkflow:
         
         # Step 3: Build the code context (Librarian)
         workflow.logger.info("Step 3: Building code context...")
-        repo_handle = RepoHandle(
-            repo_id=environment['repo_id'],
-            repo_path=environment['repo_path'],
-            commit_sha=environment['commit_sha']
-        )
         
         code_context = await workflow.execute_child_workflow(
             BuildCodeContextWorkflow.run,
@@ -83,5 +78,5 @@ class ReviewWorkflow:
 
         workflow.logger.info("Review workflow completed successfully")
         
-        return environment
+        return repo_handle
 

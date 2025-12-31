@@ -5,11 +5,12 @@ from activities.resolveCloneable import resolve_cloneable_repo
 from activities.cloneRepo import clone_repo
 from activities.matchCommit import make_local_files_match_commit
 from activities.cacheRepo import check_repo_cache, store_repo_cache
+from utils.dataclasses import RepoHandle
 
 @workflow.defn(name="ingestRepositoryWorkflow")
 class IngestRepositoryWorkflow:
     @workflow.run
-    async def run(self, repo_url: str, reference: str):
+    async def run(self, repo_url: str, reference: str) -> RepoHandle:
 
         normalized_url, repo_id, commit_sha = await workflow.execute_activity(
             resolve_cloneable_repo,
@@ -71,10 +72,10 @@ class IngestRepositoryWorkflow:
         if not match_result:
           raise ValueError("failed to match local files to commit")
 
-        return {
-            "repo_id": match_result["repo_id"],
-            "repo_path": match_result["repo_path"],
-            "commit_sha": match_result["commit_sha"],
-        }
+        return RepoHandle(
+            repo_id=match_result["repo_id"],
+            repo_path=match_result["repo_path"],
+            commit_sha=match_result["commit_sha"]
+        )
 
         
