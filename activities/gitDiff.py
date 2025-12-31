@@ -111,6 +111,8 @@ async def get_diff_from_main(repo_path: str, target_branch: str = "main") -> Cha
             cwd=repo_path,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             check=True
         )
         head_commit = head_result.stdout.strip()
@@ -122,6 +124,8 @@ async def get_diff_from_main(repo_path: str, target_branch: str = "main") -> Cha
             cwd=repo_path,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             check=False  # Don't fail if origin doesn't exist
         )
         
@@ -132,6 +136,8 @@ async def get_diff_from_main(repo_path: str, target_branch: str = "main") -> Cha
                 cwd=repo_path,
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 check=True
             )
         
@@ -143,6 +149,8 @@ async def get_diff_from_main(repo_path: str, target_branch: str = "main") -> Cha
             cwd=repo_path,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             check=True
         )
         
@@ -172,6 +180,8 @@ def get_diff_stats(repo_path: str, base_commit: str, head_commit: str) -> dict:
             cwd=repo_path,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             check=True
         )
         
@@ -226,6 +236,8 @@ def get_diff_content(repo_path: str, base_commit: str, head_commit: str,
             cwd=repo_path,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             check=True
         )
         
