@@ -176,8 +176,4 @@ class BuildCodeContextWorkflow:
             metadata=ContextMetadata()
         )
 
-        # Convert dataclass to dict for JSON serialization
-        code_context_dict = asdict(code_context)
-        print(json.dumps(code_context_dict, indent=2))
-        
         return code_context

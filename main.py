@@ -1,6 +1,7 @@
 """Main entry point for LGTM CLI"""
 import asyncio
 import argparse
+import json
 from temporalio.client import Client
 from temporalio.worker import Worker
 from temporalio.common import RetryPolicy
@@ -64,7 +65,8 @@ async def review_command(repo: str, ref: str):
         print(f"Review Complete!")
         print(f"{'='*60}")
 
-        print(f"Result: {result}")
+        print(f"Result: {json.dumps(result, indent=2)}")
+
 
 
 def main():

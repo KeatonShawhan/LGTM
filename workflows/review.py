@@ -78,5 +78,5 @@ class ReviewWorkflow:
 
         workflow.logger.info("Review workflow completed successfully")
         
-        return repo_handle
+        return code_context
 
