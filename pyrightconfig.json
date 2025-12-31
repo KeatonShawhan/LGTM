@@ -1,0 +1,15 @@
+{
+  "include": [
+    "**/*.py"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/node_modules",
+    "**/.git",
+    "cache/repos"
+  ],
+  "reportMissingImports": false,
+  "reportMissingTypeStubs": false,
+  "pythonVersion": "3.13",
+  "typeCheckingMode": "off"
+}

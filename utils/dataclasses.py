@@ -26,6 +26,14 @@ class RepoHandle:
     commit_sha: str
 
 
+@dataclass(frozen=True)
+class PrioritizedFile:
+    path: str
+    risk_score: float
+    priority: int  # 0 = highest priority
+    reasons: list[str]
+
+
 # Code Context dataclasses
 @dataclass(frozen=True)
 class Totals:
@@ -64,6 +72,7 @@ class FileContext:
     risk_score: float
     added: int
     removed: int
+    reasons: list[str]
     # Can be extended with more file-specific context later
 
 

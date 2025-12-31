@@ -3,7 +3,8 @@ from datetime import timedelta
 from temporalio.common import RetryPolicy
 from utils.dataclasses import (
     RepoHandle, ChangeSet, ChangedFile, Hunk,
-    CodeContext, ContextOverview, Totals, FileTypeStats, FileContext, ContextMetadata
+    CodeContext, ContextOverview, Totals, FileTypeStats, FileContext, ContextMetadata,
+    PrioritizedFile
 )
 from activities.prioritizeFiles import prioritize_files
 from collections import defaultdict
@@ -126,45 +127,44 @@ class BuildCodeContextWorkflow:
                            f"{len(file_breakdown)} file types")
         
         # Step 2: Prioritize files by importance
-        # Convert ChangeSet back to dict for activity (activities receive serialized data)
-        change_set_dict = {
-            "base_commit": change_set.base_commit,
-            "head_commit": change_set.head_commit,
-            "files": [
-                {
-                    "path": f.path,
-                    "added": f.added,
-                    "removed": f.removed,
-                    "hunks": [{"start": h.start, "lines": h.lines} for h in f.hunks]
-                }
-                for f in change_set.files
-            ]
-        }
-        
+        # Temporal automatically serializes dataclasses to dicts when passing to activities
         workflow.logger.info("Prioritizing files by risk score...")
         prioritized_files = await workflow.execute_activity(
             prioritize_files,
-            args=[change_set_dict],
+            args=[change_set],
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=RetryPolicy(maximum_attempts=2)
         )
-        
-        print(json.dumps(prioritized_files, indent=2))
+      
 
         workflow.logger.info(f"Prioritized {len(prioritized_files)} files (after filtering ignored files)")
         if prioritized_files:
-            workflow.logger.info(f"Top file: {prioritized_files[0]['path']} (risk score: {prioritized_files[0]['risk_score']:.2f})")
+            # Handle both dict (after Temporal serialization) and PrioritizedFile object
+            first_file = prioritized_files[0]
+            workflow.logger.info(f"Top file: {first_file.path} (risk score: {first_file.risk_score:.2f})")
+        
+        # Create a lookup map from change_set to get added/removed values
+        file_stats_map = {f.path: (f.added, f.removed) for f in change_set.files}
         
         # Build files dict (Layer 1+) - map file paths to FileContext
-        files_dict = {
-            file_data['path']: FileContext(
-                path=file_data['path'],
-                risk_score=file_data['risk_score'],
-                added=file_data['added'],
-                removed=file_data['removed']
+        # Handle both dict (after Temporal serialization) and PrioritizedFile object
+        files_dict = {}
+        for file_data in prioritized_files:
+            # Already a PrioritizedFile object
+            file_path = file_data.path
+            risk_score = file_data.risk_score
+            reasons = file_data.reasons
+            # Get added/removed from original change_set
+            added, removed = file_stats_map.get(file_path, (0, 0))
+            
+            file_context = FileContext(
+                path=file_path,
+                risk_score=risk_score,
+                added=added,
+                removed=removed,
+                reasons=reasons
             )
-            for file_data in prioritized_files
-        }
+            files_dict[file_path] = file_context
         
         # Build and return CodeContext
         code_context = CodeContext(

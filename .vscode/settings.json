@@ -1,0 +1,6 @@
+{
+  "python.analysis.typeCheckingMode": "off",
+  "python.analysis.autoImportCompletions": true,
+  "python.analysis.indexing": true,
+  "python.languageServer": "Pylance"
+}
