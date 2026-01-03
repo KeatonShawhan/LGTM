@@ -66,6 +66,16 @@ class ContextMetadata:
 
 
 @dataclass(frozen=True)
+class FileSummary:
+    """Structured summary of a file's purpose and behavior"""
+    purpose: str
+    behavior: str
+    key_functions: list[str]
+    dependencies: list[str]
+    notes: Optional[str] = None
+
+
+@dataclass(frozen=True)
 class FileContext:
     """Context for individual files (Layer 1+)"""
     path: str
@@ -73,6 +83,7 @@ class FileContext:
     added: int
     removed: int
     reasons: list[str]
+    summary: Optional[FileSummary] = None
     # Can be extended with more file-specific context later
 
 

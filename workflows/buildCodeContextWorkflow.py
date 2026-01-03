@@ -4,9 +4,10 @@ from temporalio.common import RetryPolicy
 from utils.dataclasses import (
     RepoHandle, ChangeSet, ChangedFile, Hunk,
     CodeContext, ContextOverview, Totals, FileTypeStats, FileContext, ContextMetadata,
-    PrioritizedFile
+    PrioritizedFile, FileSummary
 )
 from activities.prioritizeFiles import prioritize_files
+from activities.summarizeFile import summarize_file
 from collections import defaultdict
 from dataclasses import asdict
 import json
@@ -19,7 +20,7 @@ class BuildCodeContextWorkflow:
     """
     
     @workflow.run
-    async def run(self, repo_handle: dict, change_set: dict) -> CodeContext:
+    async def run(self, repo_handle: RepoHandle, change_set: ChangeSet) -> CodeContext:
         """
         Build code context from repository handle and changeset.
         
@@ -30,28 +31,6 @@ class BuildCodeContextWorkflow:
         Returns:
             CodeContext dataclass containing overview (Layer 0) and prioritized files (Layer 1+)
         """
-        # Convert dicts to dataclasses (Temporal serializes dataclasses to dicts when passing between workflows)
-        if isinstance(repo_handle, dict):
-            repo_handle = RepoHandle(
-                repo_id=repo_handle['repo_id'],
-                repo_path=repo_handle['repo_path'],
-                commit_sha=repo_handle['commit_sha']
-            )
-        
-        if isinstance(change_set, dict):
-            change_set = ChangeSet(
-                base_commit=change_set['base_commit'],
-                head_commit=change_set['head_commit'],
-                files=[
-                    ChangedFile(
-                        path=f['path'],
-                        added=f['added'],
-                        removed=f['removed'],
-                        hunks=[Hunk(start=h['start'], lines=h['lines']) for h in f.get('hunks', [])]
-                    )
-                    for f in change_set['files']
-                ]
-            )
         
         workflow.logger.info(f"Building code context for repo: {repo_handle.repo_id}")
         workflow.logger.info(f"Processing changeset with {len(change_set.files)} changed files")
@@ -136,12 +115,15 @@ class BuildCodeContextWorkflow:
             retry_policy=RetryPolicy(maximum_attempts=2)
         )
       
-
         workflow.logger.info(f"Prioritized {len(prioritized_files)} files (after filtering ignored files)")
         if prioritized_files:
             # Handle both dict (after Temporal serialization) and PrioritizedFile object
             first_file = prioritized_files[0]
             workflow.logger.info(f"Top file: {first_file.path} (risk score: {first_file.risk_score:.2f})")
+        
+        # Step 3: Summarize each prioritized file
+        workflow.logger.info("Summarizing prioritized files...")
+        summarizer_version = "v1"  # Can be made configurable in the future
         
         # Create a lookup map from change_set to get added/removed values
         file_stats_map = {f.path: (f.added, f.removed) for f in change_set.files}
@@ -157,12 +139,25 @@ class BuildCodeContextWorkflow:
             # Get added/removed from original change_set
             added, removed = file_stats_map.get(file_path, (0, 0))
             
+            # Summarize the file
+            try:
+                summary = await workflow.execute_activity(
+                    summarize_file,
+                    args=[repo_handle.repo_id, repo_handle.commit_sha, file_path, repo_handle.repo_path, summarizer_version],
+                    start_to_close_timeout=timedelta(minutes=2),
+                    retry_policy=RetryPolicy(maximum_attempts=2)
+                )
+            except Exception as e:
+                workflow.logger.warning(f"Failed to summarize {file_path}: {e}")
+                summary = None
+            
             file_context = FileContext(
                 path=file_path,
                 risk_score=risk_score,
                 added=added,
                 removed=removed,
-                reasons=reasons
+                reasons=reasons,
+                summary=summary
             )
             files_dict[file_path] = file_context
         

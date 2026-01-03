@@ -88,6 +88,87 @@ def parse_diff_output(diff_output: str) -> list[ChangedFile]:
     return changed_files
 
 
+def _detect_default_branch(repo_path: Path) -> Optional[str]:
+    """
+    Try to detect the default branch of the repository.
+    
+    Returns:
+        Branch name if found, None otherwise
+    """
+    # Try to get default branch from remote HEAD symbolic ref
+    # This returns something like "refs/remotes/origin/main" or "refs/remotes/origin/master"
+    try:
+        result = subprocess.run(
+            ['git', 'symbolic-ref', 'refs/remotes/origin/HEAD'],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            check=False
+        )
+        if result.returncode == 0:
+            # Extract branch name from refs/remotes/origin/main or refs/remotes/origin/master
+            ref = result.stdout.strip()
+            # ref will be like "refs/remotes/origin/main" or "refs/remotes/origin/master"
+            if ref.startswith('refs/remotes/origin/'):
+                branch = ref.replace('refs/remotes/origin/', '')
+                return branch
+    except Exception:
+        pass
+    
+    # Alternative: use git rev-parse --abbrev-ref to get just the branch name
+    try:
+        result = subprocess.run(
+            ['git', 'rev-parse', '--abbrev-ref', 'refs/remotes/origin/HEAD'],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            check=False
+        )
+        if result.returncode == 0:
+            branch = result.stdout.strip()
+            # Remove "origin/" prefix if present
+            if branch.startswith('origin/'):
+                branch = branch.replace('origin/', '')
+            return branch
+    except Exception:
+        pass
+    
+    # Try common branch names
+    common_branches = ['main', 'master', 'develop', 'dev', 'trunk']
+    for branch in common_branches:
+        # Try origin first
+        result = subprocess.run(
+            ['git', 'rev-parse', f'origin/{branch}'],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            check=False
+        )
+        if result.returncode == 0:
+            return branch
+        
+        # Try local branch
+        result = subprocess.run(
+            ['git', 'rev-parse', branch],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            check=False
+        )
+        if result.returncode == 0:
+            return branch
+    
+    return None
+
+
 @activity.defn(name='get_diff_from_main')
 async def get_diff_from_main(repo_path: str, target_branch: str = "main") -> ChangeSet:
     """
@@ -95,7 +176,7 @@ async def get_diff_from_main(repo_path: str, target_branch: str = "main") -> Cha
     
     Args:
         repo_path: Path to the local git repository
-        target_branch: Branch to compare against (default: "main")
+        target_branch: Branch to compare against (default: "main", will auto-detect if not found)
     
     Returns:
         ChangeSet with base_commit (target branch), head_commit (current HEAD), 
@@ -117,8 +198,10 @@ async def get_diff_from_main(repo_path: str, target_branch: str = "main") -> Cha
         )
         head_commit = head_result.stdout.strip()
         
-        # Get the target branch commit (e.g., main)
-        # First, try to get it from origin
+        # Try to get the target branch commit
+        base_commit = None
+        
+        # First, try the specified target branch
         base_result = subprocess.run(
             ['git', 'rev-parse', f'origin/{target_branch}'],
             cwd=repo_path,
@@ -126,11 +209,13 @@ async def get_diff_from_main(repo_path: str, target_branch: str = "main") -> Cha
             text=True,
             encoding='utf-8',
             errors='replace',
-            check=False  # Don't fail if origin doesn't exist
+            check=False
         )
         
-        # If origin doesn't exist, try local branch
-        if base_result.returncode != 0:
+        if base_result.returncode == 0:
+            base_commit = base_result.stdout.strip()
+        else:
+            # Try local branch
             base_result = subprocess.run(
                 ['git', 'rev-parse', target_branch],
                 cwd=repo_path,
@@ -138,10 +223,76 @@ async def get_diff_from_main(repo_path: str, target_branch: str = "main") -> Cha
                 text=True,
                 encoding='utf-8',
                 errors='replace',
-                check=True
+                check=False
             )
+            if base_result.returncode == 0:
+                base_commit = base_result.stdout.strip()
         
-        base_commit = base_result.stdout.strip()
+        # If target branch not found, try to auto-detect default branch
+        if base_commit is None:
+            detected_branch = _detect_default_branch(repo_path)
+            if detected_branch:
+                activity.heartbeat(f"Target branch '{target_branch}' not found, using detected default branch '{detected_branch}'")
+                # Try origin first
+                base_result = subprocess.run(
+                    ['git', 'rev-parse', f'origin/{detected_branch}'],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    check=False
+                )
+                if base_result.returncode == 0:
+                    base_commit = base_result.stdout.strip()
+                else:
+                    # Try local
+                    base_result = subprocess.run(
+                        ['git', 'rev-parse', detected_branch],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        encoding='utf-8',
+                        errors='replace',
+                        check=False
+                    )
+                    if base_result.returncode == 0:
+                        base_commit = base_result.stdout.strip()
+        
+        # If still no base commit found, use HEAD^ (parent of current commit) as fallback
+        if base_commit is None:
+            activity.heartbeat(f"Could not find target branch '{target_branch}' or default branch, using parent of HEAD")
+            base_result = subprocess.run(
+                ['git', 'rev-parse', 'HEAD^'],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                check=False
+            )
+            if base_result.returncode == 0:
+                base_commit = base_result.stdout.strip()
+            else:
+                # Last resort: use empty tree (will show all files as new)
+                activity.heartbeat("Using empty tree as base (all files will appear as new)")
+                base_result = subprocess.run(
+                    ['git', 'hash-object', '-t', 'tree', '/dev/null'],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    check=False
+                )
+                if base_result.returncode == 0:
+                    base_commit = base_result.stdout.strip()
+                else:
+                    # Use 4b825dc642cb6eb9a060e54bf8d69288fbee4904 (empty tree SHA)
+                    base_commit = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
+        
+        if base_commit is None:
+            raise RuntimeError(f"Could not determine base commit. Target branch '{target_branch}' not found and could not detect default branch.")
         
         # Get the unified diff with context
         diff_result = subprocess.run(

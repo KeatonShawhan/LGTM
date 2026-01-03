@@ -16,6 +16,7 @@ from activities.matchCommit import make_local_files_match_commit
 from activities.cacheRepo import check_repo_cache, store_repo_cache
 from activities.gitDiff import get_diff_from_main
 from activities.prioritizeFiles import prioritize_files
+from activities.summarizeFile import summarize_file
 import os
 
 load_dotenv()
@@ -44,6 +45,7 @@ async def review_command(repo: str, ref: str):
           store_repo_cache,
           get_diff_from_main,
           prioritize_files,
+          summarize_file,
         ]
     ):
         # Start the parent workflow - it will orchestrate child workflows internally

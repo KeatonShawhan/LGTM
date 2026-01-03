@@ -18,3 +18,5 @@ cython_debug/
 # Cache directory (repositories and metadata)
 cache/repos/
 cache/repos/*
+cache/file_summaries/
+cache/file_summaries/*
