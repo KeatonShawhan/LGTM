@@ -25,48 +25,57 @@ def _parse_summary_response(response_text: str) -> FileSummary:
     dependencies = []
     notes = None
     
-    # Try to find purpose
-    purpose_match = re.search(r'(?:Purpose|purpose):\s*(.+?)(?:\n|$)', response_text, re.IGNORECASE | re.DOTALL)
-    if purpose_match:
-        purpose = purpose_match.group(1).strip()
+    print('\n\n\n', response_text, '\n\n\n')
     
-    # Try to find behavior
-    behavior_match = re.search(r'(?:Behavior|behavior|Functionality|functionality):\s*(.+?)(?:\n|$)', response_text, re.IGNORECASE | re.DOTALL)
-    if behavior_match:
-        behavior = behavior_match.group(1).strip()
+    # Extract sections using regex
+    def extract_section(title_variants):
+        """Extract a section by trying multiple title variants"""
+        for title in title_variants:
+            pattern = rf'###\s*{re.escape(title)}\s*\n(.*?)(?=###|\Z)'
+            match = re.search(pattern, response_text, re.DOTALL | re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+        return ""
     
-    # Try to find key functions
-    functions_match = re.search(r'(?:Key Functions|key functions|Functions|functions):\s*(.+?)(?:\n(?:Dependencies|Notes)|$)', response_text, re.IGNORECASE | re.DOTALL)
-    if functions_match:
-        functions_text = functions_match.group(1).strip()
-        # Split by comma, newline, or bullet points
-        key_functions = [f.strip() for f in re.split(r'[,•\-\n]', functions_text) if f.strip()]
+    # Extract Purpose
+    purpose = extract_section(['Purpose', 'purpose'])
     
-    # Try to find dependencies
-    deps_match = re.search(r'(?:Dependencies|dependencies|Imports|imports):\s*(.+?)(?:\n(?:Notes|$)|$)', response_text, re.IGNORECASE | re.DOTALL)
-    if deps_match:
-        deps_text = deps_match.group(1).strip()
-        dependencies = [d.strip() for d in re.split(r'[,•\-\n]', deps_text) if d.strip()]
+    # Extract Behavior
+    behavior = extract_section(['Behavior', 'behavior'])
     
-    # Try to find notes
-    notes_match = re.search(r'(?:Notes|notes):\s*(.+?)$', response_text, re.IGNORECASE | re.DOTALL)
-    if notes_match:
-        notes = notes_match.group(1).strip()
+    # Extract Key Functions
+    key_functions_text = extract_section(['Key Functions', 'key functions', 'Functions', 'functions'])
+    if key_functions_text:
+        pattern = r'\|\s*`?([^`|]+)`?\s*\|\s*([^|]+?)\s*\|'
+        lines = key_functions_text.split('\n')
+        
+        for line in lines:
+            # Skip header and separator lines
+            if '|-----' in line or line.strip().startswith('| Method') or line.strip().startswith('| Function'):
+                continue
+                
+            match = re.search(pattern, line)
+            if match:
+                method = match.group(1).strip()
+                method_purpose = match.group(2).strip()
+                key_functions.append(f'{method}: {method_purpose}')
     
-    # If we couldn't parse structured format, use the whole response as purpose
-    if not purpose and not behavior:
-        # Try to extract first paragraph as purpose
-        paragraphs = [p.strip() for p in response_text.split('\n\n') if p.strip()]
-        if paragraphs:
-            purpose = paragraphs[0]
-        if len(paragraphs) > 1:
-            behavior = paragraphs[1]
-        if len(paragraphs) > 2:
-            notes = '\n\n'.join(paragraphs[2:])
+    # Extract Dependencies
+    dependencies_text = extract_section(['Dependencies', 'dependencies', 'Imports', 'imports'])
+    if dependencies_text:
+        # Remove markdown list markers and split by common delimiters
+        dependencies = [d.strip() for d in re.split(r'[,•\-\n*]', dependencies_text) if d.strip() and not d.strip().startswith('`')]
+        # Clean up any remaining backticks
+        dependencies = [d.strip('`').strip() for d in dependencies if d.strip()]
+    
+    # Extract Notes
+    notes = extract_section(['Notes', 'notes', 'Additional Information', 'additional information'])
+    if not notes:
+        notes = None
     
     return FileSummary(
-        purpose=purpose or "Unable to determine purpose",
-        behavior=behavior or "Unable to determine behavior",
+        purpose=purpose,
+        behavior=behavior,
         key_functions=key_functions,
         dependencies=dependencies,
         notes=notes
@@ -154,15 +163,7 @@ Code:
 ```{Path(file_path).suffix.lstrip('.') or 'text'}
 {file_content}
 ```
-
-Please provide a structured summary with the following sections:
-1. Purpose: The high-level purpose of this file
-2. Behavior: The main behavior and functionality
-3. Key Functions: List the important functions, classes, or modules (comma-separated)
-4. Dependencies: List key imports and dependencies (comma-separated)
-5. Notes: Any additional important information
-
-Format your response clearly with section headers."""
+"""
         
         system_prompt = """You are an expert code analyst specializing in file summarization.
 Your task is to analyze code files and provide structured summaries that include:
@@ -172,7 +173,10 @@ Your task is to analyze code files and provide structured summaries that include
 4. Dependencies: Key imports and dependencies
 5. Notes: Any additional important information
 
-Provide clear, concise summaries that help understand the file's role in the codebase."""
+Provide clear, concise summaries that help understand the file's role in the codebase.
+
+Each section of the summary (1-5) should be separated by markdown titles, specifically `###`. Additionally, for the
+key functions, format it in a markdown table, where the left column is the method, and the right column is the purpose."""
         
         # Import Anthropic inside the function to avoid workflow sandbox restrictions
         from anthropic import Anthropic
