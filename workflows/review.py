@@ -13,7 +13,7 @@ class ReviewWorkflow:
     """User-facing workflow that orchestrates internal workflows"""
     
     @workflow.run
-    async def run(self, repo: str, ref: str):
+    async def run(self, repo: str, ref: str, force_new_summary: bool = False):
         """
         Orchestrate the review process by calling internal workflows in succession
         
@@ -22,6 +22,8 @@ class ReviewWorkflow:
             ref: Git reference (branch, tag, or commit SHA)
         """
         workflow.logger.info(f"Starting review workflow for {repo} (ref: {ref})")
+        if force_new_summary:
+            workflow.logger.info("Force-new-summary enabled for this review run")
         
         # Step 1: Ingest the repository
         workflow.logger.info("Step 1: Ingesting repository...")
@@ -61,7 +63,7 @@ class ReviewWorkflow:
         
         code_context = await workflow.execute_child_workflow(
             BuildCodeContextWorkflow.run,
-            args=[repo_handle, change_set],
+            args=[repo_handle, change_set, force_new_summary],
             id=f"build-context-{workflow.info().workflow_id}",
             task_queue="code-dev-queue",
             retry_policy=RetryPolicy(maximum_attempts=2)

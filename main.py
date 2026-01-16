@@ -22,7 +22,7 @@ import os
 load_dotenv()
 
 
-async def review_command(repo: str, ref: str):
+async def review_command(repo: str, ref: str, force_new_summary: bool = False):
     """Execute the review workflow for a given repository and reference"""
     # Connect to Temporal server
     client = await Client.connect("localhost:7233")
@@ -52,7 +52,7 @@ async def review_command(repo: str, ref: str):
         print(f"Starting review for repository: {repo} (ref: {ref})")
         review_handle = await client.start_workflow(
             ReviewWorkflow.run,
-            args=[repo, ref],
+            args=[repo, ref, force_new_summary],
             id=f"review-{asyncio.get_event_loop().time()}",
             task_queue="code-dev-queue",
             retry_policy=RetryPolicy(maximum_attempts=2)
@@ -92,11 +92,16 @@ def main():
         required=True,
         help="Git reference (branch, tag, or commit SHA)"
     )
+    review_parser.add_argument(
+        "--fresh-summary",
+        action="store_true",
+        help="Always regenerate file summaries (ignore cache)"
+    )
     
     args = parser.parse_args()
 
     if args.command == "review":
-        asyncio.run(review_command(args.repo, args.ref))
+        asyncio.run(review_command(args.repo, args.ref, args.fresh_summary))
     else:
         parser.print_help()
 

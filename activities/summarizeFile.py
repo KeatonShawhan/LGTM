@@ -128,7 +128,8 @@ async def summarize_file(
     commit_sha: str,
     file_path: str,
     repo_path: str,
-    summarizer_version: str = "v1"
+    summarizer_version: str = "v1",
+    force_new_summary: bool = False
 ) -> FileSummary:
     """
     Summarize a file using an agent, with caching support.
@@ -139,24 +140,26 @@ async def summarize_file(
         file_path: Path to the file relative to repo root
         repo_path: Absolute path to the repository root
         summarizer_version: Version of the summarizer (for cache versioning)
+        force_new_summary: If True, bypass cache and always regenerate summary
         
     Returns:
         FileSummary object with structured summary
     """
     activity.heartbeat(f"Summarizing file: {file_path}")
     
-    # Check cache first
+    # Check cache first unless forcing fresh summary
     cache = get_file_summary_cache()
-    cached_summary = cache.get(repo_id, commit_sha, file_path, summarizer_version)
-    
-    if cached_summary is not None:
-        activity.heartbeat(f"Cache hit for {file_path}")
-        # Convert dict back to FileSummary if needed (Temporal serialization)
-        if isinstance(cached_summary, dict):
-            # Remove 'notes' if present (for backward compatibility with old cached summaries)
-            cached_summary = {k: v for k, v in cached_summary.items() if k != 'notes'}
-            return FileSummary(**cached_summary)
-        return cached_summary
+    if not force_new_summary:
+        cached_summary = cache.get(repo_id, commit_sha, file_path, summarizer_version)
+        
+        if cached_summary is not None:
+            activity.heartbeat(f"Cache hit for {file_path}")
+            # Convert dict back to FileSummary if needed (Temporal serialization)
+            if isinstance(cached_summary, dict):
+                # Remove 'notes' if present (for backward compatibility with old cached summaries)
+                cached_summary = {k: v for k, v in cached_summary.items() if k != 'notes'}
+                return FileSummary(**cached_summary)
+            return cached_summary
     
     activity.heartbeat(f"Cache miss for {file_path}, generating summary...")
     

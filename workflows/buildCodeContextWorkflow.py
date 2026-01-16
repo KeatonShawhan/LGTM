@@ -20,7 +20,7 @@ class BuildCodeContextWorkflow:
     """
     
     @workflow.run
-    async def run(self, repo_handle: RepoHandle, change_set: ChangeSet) -> CodeContext:
+    async def run(self, repo_handle: RepoHandle, change_set: ChangeSet, force_new_summary: bool = False) -> CodeContext:
         """
         Build code context from repository handle and changeset.
         
@@ -123,7 +123,9 @@ class BuildCodeContextWorkflow:
         
         # Step 3: Summarize each prioritized file
         workflow.logger.info("Summarizing prioritized files...")
-        summarizer_version = "v3"  # Can be made configurable in the future
+        if force_new_summary:
+            workflow.logger.info("Force-new-summary enabled; bypassing summary cache")
+        summarizer_version = "v9"  # Can be made configurable in the future
         
         # Create a lookup map from change_set to get added/removed values
         file_stats_map = {f.path: (f.added, f.removed) for f in change_set.files}
@@ -143,7 +145,14 @@ class BuildCodeContextWorkflow:
             try:
                 summary = await workflow.execute_activity(
                     summarize_file,
-                    args=[repo_handle.repo_id, repo_handle.commit_sha, file_path, repo_handle.repo_path, summarizer_version],
+                    args=[
+                        repo_handle.repo_id,
+                        repo_handle.commit_sha,
+                        file_path,
+                        repo_handle.repo_path,
+                        summarizer_version,
+                        force_new_summary
+                    ],
                     start_to_close_timeout=timedelta(minutes=2),
                     retry_policy=RetryPolicy(maximum_attempts=2)
                 )
