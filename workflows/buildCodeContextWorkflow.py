@@ -123,7 +123,7 @@ class BuildCodeContextWorkflow:
         
         # Step 3: Summarize each prioritized file
         workflow.logger.info("Summarizing prioritized files...")
-        summarizer_version = "v1"  # Can be made configurable in the future
+        summarizer_version = "v3"  # Can be made configurable in the future
         
         # Create a lookup map from change_set to get added/removed values
         file_stats_map = {f.path: (f.added, f.removed) for f in change_set.files}

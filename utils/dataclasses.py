@@ -72,7 +72,6 @@ class FileSummary:
     behavior: str
     key_functions: list[str]
     dependencies: list[str]
-    notes: Optional[str] = None
 
 
 @dataclass(frozen=True)
