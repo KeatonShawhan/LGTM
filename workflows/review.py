@@ -4,6 +4,7 @@ from temporalio.common import RetryPolicy
 from workflows.ingestRepositoryWorkflow import IngestRepositoryWorkflow
 from workflows.computeChangeSetWorkflow import ComputeChangeSetWorkflow
 from workflows.buildCodeContextWorkflow import BuildCodeContextWorkflow
+from workflows.codeReviewWorkflow import CodeReviewWorkflow
 from utils.dataclasses import RepoHandle
 from datetime import timedelta
 
@@ -72,13 +73,27 @@ class ReviewWorkflow:
         if not code_context:
             workflow.logger.error("Failed to build code context")
             raise Exception("Failed to build code context")
-        
+
         workflow.logger.info("Code context built successfully")
 
-        # Step 4: Generate the review
+        # Step 4: Run code review
+        workflow.logger.info("Step 4: Running code review...")
+        review_result = await workflow.execute_child_workflow(
+            CodeReviewWorkflow.run,
+            args=[code_context, repo_handle.repo_path],
+            id=f"review-{workflow.info().workflow_id}",
+            task_queue="code-dev-queue",
+            retry_policy=RetryPolicy(maximum_attempts=2),
+        )
 
+        if not review_result:
+            workflow.logger.error("Failed to run code review")
+            raise Exception("Failed to run code review")
 
         workflow.logger.info("Review workflow completed successfully")
-        
-        return code_context
+
+        return {
+            "context": code_context,
+            "review": review_result
+        }
 

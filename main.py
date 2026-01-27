@@ -9,6 +9,7 @@ from workflows.review import ReviewWorkflow
 from workflows.ingestRepositoryWorkflow import IngestRepositoryWorkflow
 from workflows.computeChangeSetWorkflow import ComputeChangeSetWorkflow
 from workflows.buildCodeContextWorkflow import BuildCodeContextWorkflow
+from workflows.codeReviewWorkflow import CodeReviewWorkflow
 from dotenv import load_dotenv
 from activities.resolveCloneable import resolve_cloneable_repo
 from activities.cloneRepo import clone_repo
@@ -17,6 +18,7 @@ from activities.cacheRepo import check_repo_cache, store_repo_cache
 from activities.gitDiff import get_diff_from_main
 from activities.prioritizeFiles import prioritize_files
 from activities.summarizeFile import summarize_file
+from activities.reviewCode import review_code
 import os
 
 load_dotenv()
@@ -36,6 +38,7 @@ async def review_command(repo: str, ref: str, use_cache: bool = False):
             IngestRepositoryWorkflow,
             ComputeChangeSetWorkflow,
             BuildCodeContextWorkflow,
+            CodeReviewWorkflow,
         ],
         activities=[
           resolve_cloneable_repo,
@@ -46,6 +49,7 @@ async def review_command(repo: str, ref: str, use_cache: bool = False):
           get_diff_from_main,
           prioritize_files,
           summarize_file,
+          review_code,
         ]
     ):
         # Start the parent workflow - it will orchestrate child workflows internally

@@ -99,3 +99,28 @@ class CodeContext:
 
     # Librarian bookkeeping
     metadata: ContextMetadata
+
+
+# Code Review dataclasses
+@dataclass(frozen=True)
+class ReviewFinding:
+    """Individual code review finding"""
+    file_path: str
+    line_number: int              # Primary line where issue occurs
+    severity: str                 # "critical", "high", "medium", "low"
+    category: str                 # "bug", "security", "performance", "style"
+    title: str                    # Short description (1 line)
+    evidence: str                 # Code snippet showing the issue
+    suggestion: str               # Recommended fix or action
+    confidence: float             # 0.0-1.0 confidence in this finding
+    validated: bool = False       # Set by validation step
+
+
+@dataclass(frozen=True)
+class ReviewResult:
+    """Complete code review result"""
+    summary: str                  # Executive summary of the review
+    warnings: list[str]           # High-level warnings/concerns
+    overall_confidence: float     # 0.0-1.0 overall confidence
+    findings: list[ReviewFinding] # Individual findings
+    stats: dict[str, int]         # e.g., {"critical": 1, "high": 3, ...}
