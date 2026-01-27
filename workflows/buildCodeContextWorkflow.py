@@ -125,7 +125,7 @@ class BuildCodeContextWorkflow:
         workflow.logger.info("Summarizing prioritized files...")
         if use_cache:
             workflow.logger.info("Using cached summaries when available")
-        summarizer_version = "v9"  # Can be made configurable in the future
+        summarizer_version = "v10"  # Bumped for improved prompt + parsing
         
         # Create a lookup map from change_set to get added/removed values
         file_stats_map = {f.path: (f.added, f.removed) for f in change_set.files}
