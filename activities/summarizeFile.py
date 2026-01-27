@@ -129,7 +129,7 @@ async def summarize_file(
     file_path: str,
     repo_path: str,
     summarizer_version: str = "v1",
-    force_new_summary: bool = False
+    use_cache: bool = False
 ) -> FileSummary:
     """
     Summarize a file using an agent, with caching support.
@@ -140,16 +140,16 @@ async def summarize_file(
         file_path: Path to the file relative to repo root
         repo_path: Absolute path to the repository root
         summarizer_version: Version of the summarizer (for cache versioning)
-        force_new_summary: If True, bypass cache and always regenerate summary
+        use_cache: If True, use cached summaries when available
         
     Returns:
         FileSummary object with structured summary
     """
     activity.heartbeat(f"Summarizing file: {file_path}")
     
-    # Check cache first unless forcing fresh summary
+    # Check cache first if caching is enabled
     cache = get_file_summary_cache()
-    if not force_new_summary:
+    if use_cache:
         cached_summary = cache.get(repo_id, commit_sha, file_path, summarizer_version)
         
         if cached_summary is not None:

@@ -58,7 +58,7 @@ python main.py review --repo <github-url> --ref <branch|tag|commit>
 Options:
 - `--repo`: GitHub repository URL (required)
 - `--ref`: Git reference - branch, tag, or commit SHA (required)
-- `--fresh-summary`: Force regenerate file summaries (ignore cache)
+- `--use-cache`: Use cached file summaries when available
 
 ### Examples
 ```bash
@@ -68,8 +68,8 @@ python main.py review --repo https://github.com/user/repo --ref feature-branch
 # Review a specific commit
 python main.py review --repo user/repo --ref abc123
 
-# Review with fresh summaries
-python main.py review --repo user/repo --ref main --fresh-summary
+# Review with cached summaries
+python main.py review --repo user/repo --ref main --use-cache
 ```
 
 ## Key Domain Concepts
