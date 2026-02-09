@@ -19,6 +19,7 @@ from activities.gitDiff import get_diff_from_main
 from activities.prioritizeFiles import prioritize_files
 from activities.summarizeFile import summarize_file
 from activities.reviewCode import review_code
+from activities.agenticReview import agentic_review
 import os
 
 load_dotenv()
@@ -50,6 +51,7 @@ async def review_command(repo: str, ref: str, use_cache: bool = False):
           prioritize_files,
           summarize_file,
           review_code,
+          agentic_review,
         ]
     ):
         # Start the parent workflow - it will orchestrate child workflows internally

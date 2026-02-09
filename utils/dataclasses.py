@@ -124,3 +124,7 @@ class ReviewResult:
     overall_confidence: float     # 0.0-1.0 overall confidence
     findings: list[ReviewFinding] # Individual findings
     stats: dict[str, int]         # e.g., {"critical": 1, "high": 3, ...}
+    # Agentic review observability (optional, backward-compatible)
+    token_usage: Optional[dict] = None        # {"input": N, "output": N, "total": N}
+    iterations: Optional[int] = None           # Number of agentic loop iterations
+    files_analyzed: Optional[list[str]] = None # Files the agent chose to inspect

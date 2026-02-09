@@ -80,7 +80,7 @@ class ReviewWorkflow:
         workflow.logger.info("Step 4: Running code review...")
         review_result = await workflow.execute_child_workflow(
             CodeReviewWorkflow.run,
-            args=[code_context, repo_handle.repo_path],
+            args=[code_context, change_set, repo_handle.repo_path],
             id=f"review-{workflow.info().workflow_id}",
             task_queue="code-dev-queue",
             retry_policy=RetryPolicy(maximum_attempts=2),
