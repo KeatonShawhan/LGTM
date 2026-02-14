@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(pip install:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "WebFetch(domain:docs.smith.langchain.com)",
+      "WebFetch(domain:reference.langchain.com)",
+      "WebFetch(domain:docs.langchain.com)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

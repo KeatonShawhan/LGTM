@@ -89,7 +89,11 @@ def traced_anthropic_call(
                     "tools": [t["name"] for t in create_kwargs.get("tools", [])],
                     "messages": _sanitize_messages(create_kwargs.get("messages", [])),
                 },
-                extra={"metadata": meta},
+                extra={"metadata": {
+                    **meta,
+                    "ls_provider": "anthropic",
+                    "ls_model_name": create_kwargs.get("model", ""),
+                }},
             )
         except Exception:
             # If LangSmith setup fails, continue without it
@@ -107,8 +111,6 @@ def traced_anthropic_call(
                 rt.end(
                     outputs={
                         "stop_reason": response.stop_reason,
-                        "input_tokens": response.usage.input_tokens,
-                        "output_tokens": response.usage.output_tokens,
                         "content_types": [b.type for b in response.content],
                         "tool_calls": [
                             {"name": b.name, "id": b.id}
@@ -117,6 +119,11 @@ def traced_anthropic_call(
                         ],
                     },
                 )
+                rt.set(usage_metadata={
+                    "input_tokens": response.usage.input_tokens,
+                    "output_tokens": response.usage.output_tokens,
+                    "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
+                })
                 rt.post()
             except Exception:
                 pass  # Never let tracing failures break the review
