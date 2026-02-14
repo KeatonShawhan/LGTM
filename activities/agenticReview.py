@@ -18,6 +18,7 @@ from utils.dataclasses import (
     ContextOverview, Totals, FileTypeStats, ContextMetadata,
 )
 import json
+import time
 
 
 # ---------------------------------------------------------------------------
@@ -414,6 +415,7 @@ def _run_deep_analysis_subagent(
     Returns a dict with 'summary' and 'findings' keys.
     """
     from anthropic import Anthropic
+    from observability.tracing import traced_anthropic_call
 
     client = Anthropic()
 
@@ -429,7 +431,14 @@ def _run_deep_analysis_subagent(
     )
 
     try:
-        message = client.messages.create(
+        message, _span = traced_anthropic_call(
+            client,
+            span_name=f"deep_analysis_{file_path}",
+            metadata={
+                "file_path": file_path,
+                "focus_question": focus_question,
+                "file_content_length": len(file_content),
+            },
             model="claude-sonnet-4-20250514",
             max_tokens=4096,
             temperature=0,
@@ -811,8 +820,10 @@ async def agentic_review(
 
     # Import Anthropic inside activity to avoid Temporal sandbox restrictions
     from anthropic import Anthropic
+    from observability.tracing import traced_anthropic_call, TraceSpan
 
     client = Anthropic()
+    trace_spans: list[TraceSpan] = []
 
     review_result: Optional[ReviewResult] = None
     iteration = 0
@@ -836,7 +847,14 @@ async def agentic_review(
 
         # Call the model
         try:
-            response = client.messages.create(
+            response, llm_span = traced_anthropic_call(
+                client,
+                span_name=f"review_iteration_{iteration}",
+                metadata={
+                    "iteration": iteration,
+                    "budget_usage": round(budget.budget_usage_ratio, 2),
+                    "files_analyzed": list(ctx.files_analyzed),
+                },
                 model="claude-sonnet-4-20250514",
                 max_tokens=4096,
                 temperature=0,
@@ -844,6 +862,7 @@ async def agentic_review(
                 messages=messages,
                 tools=REVIEW_TOOLS,
             )
+            trace_spans.append(llm_span)
         except Exception as e:
             activity.heartbeat(f"API error: {e}")
             return ReviewResult(
@@ -908,6 +927,7 @@ async def agentic_review(
                 break
 
             # Auto-route through subagent if budget is tight
+            tool_start = time.time()
             if (
                 tool_name in ("read_file_snippet", "read_full_file", "read_file_diff")
                 and budget.should_auto_route
@@ -926,6 +946,20 @@ async def agentic_review(
                     result_text = handler(tool_input, ctx)
                 else:
                     result_text = f"Error: Unknown tool '{tool_name}'"
+
+            trace_spans.append(TraceSpan(
+                name=f"tool_{tool_name}",
+                span_type="tool",
+                start_time=tool_start,
+                end_time=time.time(),
+                metadata={
+                    "tool_name": tool_name,
+                    "tool_input": tool_input,
+                    "result_length": len(result_text),
+                    "iteration": iteration,
+                    "auto_routed": budget.should_auto_route and tool_name in ("read_file_snippet", "read_full_file", "read_file_diff"),
+                },
+            ))
 
             tool_results.append({
                 "type": "tool_result",
@@ -981,4 +1015,5 @@ async def agentic_review(
         },
         iterations=iteration,
         files_analyzed=list(ctx.files_analyzed),
+        trace_log=[s.to_dict() for s in trace_spans],
     )

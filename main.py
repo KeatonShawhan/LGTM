@@ -24,6 +24,10 @@ import os
 
 load_dotenv()
 
+# LangSmith tracing (optional — no-op if LANGSMITH_API_KEY is not set)
+os.environ.setdefault("LANGSMITH_PROJECT", "lgtm-reviews")
+os.environ.setdefault("LANGSMITH_TRACING", "true")
+
 
 async def review_command(repo: str, ref: str, use_cache: bool = False):
     """Execute the review workflow for a given repository and reference"""

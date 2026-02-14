@@ -152,17 +152,28 @@ Rules:
 
         # Import Anthropic inside the function to avoid workflow sandbox restrictions
         from anthropic import Anthropic
+        from observability.tracing import traced_anthropic_call
+
         client = Anthropic()
-        message = client.messages.create(
+        message, _span = traced_anthropic_call(
+            client,
+            span_name=f"summarize_file_{file_path}",
+            metadata={
+                "repo_id": repo_id,
+                "commit_sha": commit_sha[:8],
+                "file_path": file_path,
+                "file_lines": len(lines),
+                "cache_hit": False,
+            },
             model="claude-haiku-4-5-20251001",
             max_tokens=1024,
             temperature=0,
             messages=[
                 {"role": "user", "content": prompt}
             ],
-            system=system_prompt
+            system=system_prompt,
         )
-        
+
         response_text = message.content[0].text
         
         # Parse response into FileSummary

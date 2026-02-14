@@ -128,3 +128,4 @@ class ReviewResult:
     token_usage: Optional[dict] = None        # {"input": N, "output": N, "total": N}
     iterations: Optional[int] = None           # Number of agentic loop iterations
     files_analyzed: Optional[list[str]] = None # Files the agent chose to inspect
+    trace_log: Optional[list[dict]] = None     # Per-call trace spans for debugging
