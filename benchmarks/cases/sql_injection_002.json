@@ -1,0 +1,26 @@
+{
+  "case_id": "sql_injection_002",
+  "name": "SQL injection via string interpolation",
+  "description": "Tests whether the reviewer catches SQL query construction using f-string interpolation instead of parameterized queries.",
+  "base_ref": "bench/sql_injection_002/base",
+  "head_ref": "bench/sql_injection_002/head",
+  "expected_findings": [
+    {
+      "file_path": "app/services/user_service.py",
+      "line_range": [29, 36],
+      "severity_min": "high",
+      "category": "security",
+      "description": "search_users constructs a SQL query using f-string interpolation with unsanitized user input. The query variable is built as f\"SELECT * FROM users WHERE name LIKE '%{query}%'\" which is a classic SQL injection vector.",
+      "keywords": ["SQL", "injection", "interpolation", "f-string", "parameterized", "sanitize", "query", "LIKE", "unsafe"],
+      "required": true
+    }
+  ],
+  "expected_clean": [
+    {
+      "file_path": "app/models/user.py",
+      "description": "Adding a role field to the User model — straightforward data model extension with no bugs",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["security", "python", "sql-injection", "medium"]
+}

@@ -887,17 +887,41 @@ async def agentic_review(
     repo_path: str,
 ) -> ReviewResult:
     """
-    Run an agentic code review using a tool-use loop.
+    Temporal activity wrapper. Delegates to run_review_core with activity.heartbeat.
+    """
+    return await run_review_core(
+        code_context, change_set, repo_path,
+        heartbeat_fn=activity.heartbeat,
+    )
+
+
+async def run_review_core(
+    code_context: dict,
+    change_set: dict,
+    repo_path: str,
+    heartbeat_fn=None,
+    model_override: str = None,
+) -> ReviewResult:
+    """
+    Core agentic review loop, decoupled from Temporal.
 
     Args:
-        code_context: CodeContext as dict (Temporal serialization)
-        change_set: ChangeSet as dict (Temporal serialization)
+        code_context: CodeContext as dict (or dataclass)
+        change_set: ChangeSet as dict (or dataclass)
         repo_path: Absolute path to the repository root
+        heartbeat_fn: Optional callback for progress reporting (e.g., activity.heartbeat)
+        model_override: Optional model ID to use instead of default
 
     Returns:
         ReviewResult with validated findings
     """
-    activity.heartbeat("Initializing agentic review...")
+    def heartbeat(msg: str):
+        if heartbeat_fn:
+            heartbeat_fn(msg)
+
+    model = model_override or "claude-sonnet-4-20250514"
+
+    heartbeat("Initializing agentic review...")
 
     # Reconstruct dataclasses from Temporal dicts
     ctx_obj = _reconstruct_code_context(code_context)
@@ -937,14 +961,14 @@ async def agentic_review(
     iteration = 0
 
     for iteration in range(1, MAX_ITERATIONS + 1):
-        activity.heartbeat(
+        heartbeat(
             f"Review iteration {iteration}/{MAX_ITERATIONS} "
             f"(tokens: {budget.total_tokens_used}/{budget.budget_limit}, "
             f"usage: {budget.budget_usage_ratio:.0%})"
         )
 
         if budget.budget_exhausted:
-            activity.heartbeat("Token budget exhausted, forcing review submission")
+            heartbeat("Token budget exhausted, forcing review submission")
             review_result = _build_budget_exhausted_result(ctx)
             break
 
@@ -962,7 +986,7 @@ async def agentic_review(
                     "budget_usage": round(budget.budget_usage_ratio, 2),
                     "files_analyzed": list(ctx.files_analyzed),
                 },
-                model="claude-sonnet-4-20250514",
+                model=model,
                 max_tokens=4096,
                 temperature=0,
                 system=system_prompt,
@@ -971,7 +995,7 @@ async def agentic_review(
             )
             trace_spans.append(llm_span)
         except Exception as e:
-            activity.heartbeat(f"API error: {e}")
+            heartbeat(f"API error: {e}")
             return ReviewResult(
                 summary=f"Review failed due to API error: {e}",
                 warnings=["Agentic review encountered an API error"],
@@ -1026,7 +1050,7 @@ async def agentic_review(
             tool_input = block.input
             tool_use_id = block.id
 
-            activity.heartbeat(f"Executing tool: {tool_name}")
+            heartbeat(f"Executing tool: {tool_name}")
 
             # submit_review terminates the loop
             if tool_name == "submit_review":
@@ -1039,7 +1063,7 @@ async def agentic_review(
                 tool_name in ("read_file_snippet", "read_full_file", "read_file_diff")
                 and budget.should_auto_route
             ):
-                activity.heartbeat(
+                heartbeat(
                     f"Budget pressure: auto-routing {tool_name} through subagent"
                 )
                 file_path = tool_input.get("file_path", "")
@@ -1083,7 +1107,7 @@ async def agentic_review(
 
     # If loop exhausted without a result, force a final submission
     if review_result is None:
-        activity.heartbeat("Max iterations reached — forcing final submission")
+        heartbeat("Max iterations reached — forcing final submission")
         messages.append({
             "role": "user",
             "content": (
@@ -1102,7 +1126,7 @@ async def agentic_review(
                     "iteration": "forced_submit",
                     "files_analyzed": list(ctx.files_analyzed),
                 },
-                model="claude-sonnet-4-20250514",
+                model=model,
                 max_tokens=4096,
                 temperature=0,
                 system=system_prompt,
@@ -1136,7 +1160,7 @@ async def agentic_review(
         )
 
     # Validate all findings against actual files
-    activity.heartbeat(f"Validating {len(review_result.findings)} findings...")
+    heartbeat(f"Validating {len(review_result.findings)} findings...")
     validated_findings = []
     validated_count = 0
     for finding in review_result.findings:
@@ -1145,7 +1169,7 @@ async def agentic_review(
         if validated.validated:
             validated_count += 1
 
-    activity.heartbeat(f"Validated {validated_count}/{len(validated_findings)} findings")
+    heartbeat(f"Validated {validated_count}/{len(validated_findings)} findings")
 
     # Recalculate stats with validated findings
     stats = {"critical": 0, "high": 0, "medium": 0, "low": 0}

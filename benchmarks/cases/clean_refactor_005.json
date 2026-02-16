@@ -1,0 +1,21 @@
+{
+  "case_id": "clean_refactor_005",
+  "name": "Clean refactor — rename only",
+  "description": "Tests false positive rate. This PR only renames fmt_currency to format_currency and renames a parameter from e to email_address. No bugs are introduced.",
+  "base_ref": "bench/clean_refactor_005/base",
+  "head_ref": "bench/clean_refactor_005/head",
+  "expected_findings": [],
+  "expected_clean": [
+    {
+      "file_path": "app/utils/formatting.py",
+      "description": "Pure function rename from fmt_currency to format_currency — no behavioral change",
+      "max_findings": 0
+    },
+    {
+      "file_path": "app/utils/validation.py",
+      "description": "Parameter rename from e to email_address — improves readability, no behavioral change",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["clean", "python", "refactor", "easy"]
+}

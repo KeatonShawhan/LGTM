@@ -1,0 +1,26 @@
+{
+  "case_id": "null_deref_001",
+  "name": "Null dereference in user lookup",
+  "description": "Tests whether the reviewer catches a missing null check when db.find_user() can return None but the result is immediately subscripted.",
+  "base_ref": "bench/null_deref_001/base",
+  "head_ref": "bench/null_deref_001/head",
+  "expected_findings": [
+    {
+      "file_path": "app/services/user_service.py",
+      "line_range": [29, 33],
+      "severity_min": "medium",
+      "category": "bug",
+      "description": "get_user_display_name calls db.find_user(user_id) which can return None, then immediately accesses user['name'] without checking for None first. This will raise TypeError/KeyError at runtime.",
+      "keywords": ["None", "null", "find_user", "user", "name", "check", "NoneType", "KeyError", "TypeError"],
+      "required": true
+    }
+  ],
+  "expected_clean": [
+    {
+      "file_path": "app/utils/formatting.py",
+      "description": "Pure utility addition (format_display_name) with no bugs — tests false positive rate",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["bug", "python", "null-safety", "easy"]
+}

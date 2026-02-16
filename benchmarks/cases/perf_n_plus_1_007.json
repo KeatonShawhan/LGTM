@@ -1,0 +1,26 @@
+{
+  "case_id": "perf_n_plus_1_007",
+  "name": "N+1 query pattern in order summaries",
+  "description": "Tests whether the reviewer catches a database query inside a loop (N+1 pattern) where db.find_product is called once per order instead of batch-loading products.",
+  "base_ref": "bench/perf_n_plus_1_007/base",
+  "head_ref": "bench/perf_n_plus_1_007/head",
+  "expected_findings": [
+    {
+      "file_path": "app/services/order_service.py",
+      "line_range": [31, 44],
+      "severity_min": "low",
+      "category": "performance",
+      "description": "get_order_summaries calls db.find_product(order['product_id']) inside a for loop iterating over all orders. This is the classic N+1 query pattern — one query per order instead of batch-loading all needed products before the loop.",
+      "keywords": ["N+1", "loop", "query", "batch", "find_product", "performance", "database", "iteration"],
+      "required": true
+    }
+  ],
+  "expected_clean": [
+    {
+      "file_path": "app/config.py",
+      "description": "Adding order status constants — pure constant definitions with no logic",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["performance", "python", "n-plus-1", "easy"]
+}

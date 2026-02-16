@@ -1,0 +1,26 @@
+{
+  "case_id": "auth_bypass_006",
+  "name": "Missing authentication check on delete endpoint",
+  "description": "Tests whether the reviewer notices that a new delete_user endpoint omits the auth.require_auth(token) call that every other mutating endpoint uses.",
+  "base_ref": "bench/auth_bypass_006/base",
+  "head_ref": "bench/auth_bypass_006/head",
+  "expected_findings": [
+    {
+      "file_path": "app/routes/users.py",
+      "line_range": [27, 35],
+      "severity_min": "high",
+      "category": "security",
+      "description": "delete_user accepts a token parameter but never calls auth.require_auth(token) before performing the deletion. Every other mutating endpoint (get_user, list_users, create_user) calls require_auth — this one skips it, allowing unauthenticated deletion.",
+      "keywords": ["auth", "authentication", "require_auth", "missing", "token", "delete", "authorization", "bypass", "unauthenticated"],
+      "required": true
+    }
+  ],
+  "expected_clean": [
+    {
+      "file_path": "app/routes/users.py",
+      "description": "health_check endpoint intentionally has no auth (it's a public health endpoint) — should not be flagged",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["security", "python", "auth", "medium"]
+}

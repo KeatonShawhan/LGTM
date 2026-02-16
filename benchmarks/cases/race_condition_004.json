@@ -1,0 +1,26 @@
+{
+  "case_id": "race_condition_004",
+  "name": "Race condition in concurrent order processing",
+  "description": "Tests whether the reviewer catches a TOCTOU race condition where inventory is read, checked, and decremented without atomicity or locking.",
+  "base_ref": "bench/race_condition_004/base",
+  "head_ref": "bench/race_condition_004/head",
+  "expected_findings": [
+    {
+      "file_path": "app/services/order_service.py",
+      "line_range": [31, 44],
+      "severity_min": "medium",
+      "category": "bug",
+      "description": "process_concurrent_orders reads current_stock, checks availability, then decrements — but these operations are not atomic. If called concurrently, two threads can read the same stock count and both succeed, overselling inventory.",
+      "keywords": ["race", "concurrent", "lock", "atomic", "TOCTOU", "inventory", "thread", "oversell", "mutex", "synchronization"],
+      "required": true
+    }
+  ],
+  "expected_clean": [
+    {
+      "file_path": "app/utils/formatting.py",
+      "description": "Adding fmt_log_entry utility — clean helper with no concurrency issues",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["bug", "python", "concurrency", "hard"]
+}

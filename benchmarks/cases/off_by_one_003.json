@@ -1,0 +1,26 @@
+{
+  "case_id": "off_by_one_003",
+  "name": "Off-by-one error in product range",
+  "description": "Tests whether the reviewer catches an off-by-one error where the docstring says end is exclusive but the code uses range(start, end + 1) making it inclusive.",
+  "base_ref": "bench/off_by_one_003/base",
+  "head_ref": "bench/off_by_one_003/head",
+  "expected_findings": [
+    {
+      "file_path": "app/services/product_service.py",
+      "line_range": [22, 27],
+      "severity_min": "medium",
+      "category": "bug",
+      "description": "get_product_range documents that end is exclusive but uses range(start, end + 1) which includes the element at index end, returning one extra product. The +1 contradicts the exclusive upper bound contract.",
+      "keywords": ["off-by-one", "range", "exclusive", "inclusive", "end", "+1", "boundary", "index"],
+      "required": true
+    }
+  ],
+  "expected_clean": [
+    {
+      "file_path": "app/utils/validation.py",
+      "description": "Adding validate_page_params helper — correct validation logic with no bugs",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["bug", "python", "off-by-one", "medium"]
+}
