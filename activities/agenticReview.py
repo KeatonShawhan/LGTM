@@ -31,7 +31,6 @@ class TokenBudget:
     model_context_limit: int = 200_000
     budget_fraction: float = 0.40
     auto_route_threshold: float = 0.60   # 60% of budget -> auto-route via subagent
-    summarize_threshold: float = 0.80    # 80% of budget -> summarize old context
     input_tokens_used: int = 0
     output_tokens_used: int = 0
 
@@ -50,10 +49,6 @@ class TokenBudget:
     @property
     def should_auto_route(self) -> bool:
         return self.budget_usage_ratio >= self.auto_route_threshold
-
-    @property
-    def should_summarize(self) -> bool:
-        return self.budget_usage_ratio >= self.summarize_threshold
 
     @property
     def budget_exhausted(self) -> bool:
@@ -304,11 +299,11 @@ def handle_read_full_file(tool_input: dict, ctx: ToolContext) -> str:
     line_count = len(file_lines)
     result_lines = [f"File: {file_path} ({line_count} lines)", ""]
 
-    if line_count > 500:
-        for i, line in enumerate(file_lines[:500], start=1):
+    if line_count > 200:
+        for i, line in enumerate(file_lines[:200], start=1):
             result_lines.append(f"{i:>4} | {line}")
         result_lines.append(
-            f"\n... [TRUNCATED: file has {line_count} lines, showing first 500. "
+            f"\n... [TRUNCATED: file has {line_count} lines, showing first 200. "
             f"Use read_file_snippet for specific sections.]"
         )
     else:
@@ -365,6 +360,55 @@ TOOL_HANDLERS = {
     "request_deep_analysis": handle_request_deep_analysis,
     # submit_review is handled specially in the loop
 }
+
+
+# ---------------------------------------------------------------------------
+# Tool Result Capping
+# ---------------------------------------------------------------------------
+
+MAX_TOOL_RESULT_CHARS = 12_000  # ~3K tokens
+
+def _cap_tool_result(result_text: str, tool_name: str) -> str:
+    """Cap tool results at insertion time to prevent unbounded context growth."""
+    if len(result_text) <= MAX_TOOL_RESULT_CHARS:
+        return result_text
+
+    # For diffs: keep first and last hunks, truncate middle
+    if tool_name == "read_file_diff":
+        lines = result_text.split("\n")
+        if len(lines) > 80:
+            kept = lines[:60] + [
+                f"\n... [{len(lines) - 80} lines truncated] ...\n"
+            ] + lines[-20:]
+            return "\n".join(kept)
+
+    # For file reads: keep first portion, note truncation
+    return (
+        result_text[:MAX_TOOL_RESULT_CHARS]
+        + f"\n\n... [TRUNCATED: {len(result_text)} chars total. "
+        f"Use read_file_snippet for specific sections.]"
+    )
+
+
+def _truncate_diff(diff_text: str, max_chars: int) -> str:
+    """Truncate a diff to fit within a character budget, keeping start and end."""
+    if len(diff_text) <= max_chars:
+        return diff_text
+    lines = diff_text.split("\n")
+    first_count = max(1, int(len(lines) * 0.6))
+    last_count = max(1, int(len(lines) * 0.2))
+    kept = lines[:first_count]
+    kept.append(f"\n... [{len(lines) - first_count - last_count} lines truncated] ...\n")
+    kept.extend(lines[-last_count:])
+    result = "\n".join(kept)
+    # Hard character fallback
+    if len(result) > max_chars:
+        return (
+            diff_text[: max_chars - 100]
+            + f"\n\n... [TRUNCATED: {len(diff_text)} chars total. "
+            f"Use read_file_diff for the full diff.]"
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -458,50 +502,54 @@ def _run_deep_analysis_subagent(
 # Context Summarization
 # ---------------------------------------------------------------------------
 
-def _summarize_old_context(
+def _compact_conversation_history(
     messages: list[dict],
-    ctx: ToolContext,
+    preserve_count: int = 2,
 ) -> list[dict]:
     """
-    Replace raw file/diff content in older tool results with a brief placeholder.
-    Keeps the most recently analyzed file's content intact.
+    Sliding window eviction of old tool results to prevent quadratic token growth.
+
+    Preserves only the most recent `preserve_count` tool-result messages verbatim.
+    Older tool results are replaced with a compact placeholder. Assistant reasoning
+    text is always preserved (small and critical for continuity).
     """
-    if len(ctx.files_analyzed) <= 1:
+    # Find indices of user messages that contain tool_results
+    tool_result_indices = []
+    for i, msg in enumerate(messages):
+        if msg.get("role") == "user" and isinstance(msg.get("content"), list):
+            has_tool_result = any(
+                isinstance(b, dict) and b.get("type") == "tool_result"
+                for b in msg["content"]
+            )
+            if has_tool_result:
+                tool_result_indices.append(i)
+
+    # Nothing to compact if we have few enough tool results
+    if len(tool_result_indices) <= preserve_count:
         return messages
 
-    files_to_summarize = set(ctx.files_analyzed[:-1])
+    # Indices to compact (all but the last `preserve_count`)
+    indices_to_compact = set(tool_result_indices[:-preserve_count])
 
-    summarized = []
-    for msg in messages:
-        if msg.get("role") == "user" and isinstance(msg.get("content"), list):
+    compacted = []
+    for i, msg in enumerate(messages):
+        if i in indices_to_compact:
             new_content = []
             for block in msg["content"]:
-                if block.get("type") == "tool_result":
-                    content_text = block.get("content", "")
-                    should_compress = False
-                    for fp in files_to_summarize:
-                        if fp in content_text and len(content_text) > 500:
-                            should_compress = True
-                            break
-                    if should_compress:
-                        new_content.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.get("tool_use_id", ""),
-                            "content": (
-                                "[Context compressed to save budget. "
-                                "The original content has been reviewed. "
-                                "Refer to your earlier analysis of this file.]"
-                            ),
-                        })
-                    else:
-                        new_content.append(block)
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    raw = block.get("content", "")
+                    new_content.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.get("tool_use_id", ""),
+                        "content": f"[Previously reviewed — {len(raw)} chars. See assistant analysis above.]",
+                    })
                 else:
                     new_content.append(block)
-            summarized.append({"role": msg["role"], "content": new_content})
+            compacted.append({"role": msg["role"], "content": new_content})
         else:
-            summarized.append(msg)
+            compacted.append(msg)
 
-    return summarized
+    return compacted
 
 
 # ---------------------------------------------------------------------------
@@ -511,15 +559,15 @@ def _summarize_old_context(
 def _build_review_system_prompt() -> str:
     return """You are a senior code reviewer performing an in-depth review of a pull request.
 
-You have access to tools that let you inspect the actual code and diffs. Your approach should be:
+ALL changed files have their diffs included inline in the initial message. Your approach should be:
 
-1. TRIAGE: Review the file summaries and risk scores provided. Decide which files to examine closely.
-2. INVESTIGATE: For each file you want to review:
-   - Start with read_file_diff to see what changed
-   - Use read_file_snippet to inspect specific areas of interest
+1. ANALYZE: Read every inline diff carefully. Look for bugs, security issues, and logic errors in ALL files — not just high-risk ones. Subtle bugs often hide in small changes (operator swaps, off-by-one errors, dimension changes).
+2. INVESTIGATE (optional): If you need more context:
+   - Use read_file_snippet to inspect surrounding code
+   - Use read_file_diff if an inline diff was truncated and you need the full version
    - Use read_full_file only for small files where full context matters
    - Use request_deep_analysis for complex files needing focused expert review
-3. REPORT: When you have reviewed all files of interest, call submit_review with your findings.
+3. REPORT: Call submit_review with your findings. Do this BEFORE you run out of iterations.
 
 Review categories:
 - bug: Logic errors, null references, race conditions, incorrect behavior
@@ -528,15 +576,33 @@ Review categories:
 - style: Poor naming, high complexity, missing error handling
 
 Rules:
-- Start with the highest-risk files
-- Be specific -- evidence must be actual code you have seen via tools
-- Don't waste time on low-risk files unless you have budget remaining
+- Analyze EVERY file's diff, even small changes. Subtle operator changes can be critical bugs.
+- Be specific — evidence must be actual code you have seen via inline diffs or tools
 - If the code looks good, say so. Don't invent issues.
-- Call submit_review when you are done. Do not produce findings in plain text."""
+- Call submit_review when you are done. Do not produce findings in plain text.
+- You have a LIMITED number of iterations. Analyze all inline diffs first, then submit.
+- You MUST call submit_review. If in doubt, submit early with what you have.
+
+Efficiency:
+- All files have diffs inline — analyze them directly without tool calls
+- Use read_file_snippet only for targeted investigation of specific line ranges
+- After analyzing all inline diffs, call submit_review
+- IMPORTANT: Analyze every diff before submitting. Don't skip files because of low risk scores."""
 
 
-def _build_initial_message(code_context: CodeContext) -> str:
-    """Build the initial user message from CodeContext summaries."""
+INLINE_DIFF_CHAR_BUDGET = 120_000  # ~30K tokens for all inline diffs combined
+
+
+def _build_initial_message(
+    code_context: CodeContext,
+    change_set_files: dict[str, ChangedFile],
+) -> str:
+    """Build the initial user message from CodeContext summaries.
+
+    Embeds diffs inline for ALL files using a token-aware character budget.
+    If total diff size exceeds INLINE_DIFF_CHAR_BUDGET, per-file caps shrink
+    proportionally so every file still gets its diff included.
+    """
     lines = [
         "# Pull Request Code Review",
         "",
@@ -564,6 +630,31 @@ def _build_initial_message(code_context: CodeContext) -> str:
         reverse=True,
     )
 
+    # Phase 1: Build raw diff text for every file
+    raw_diffs: dict[str, str] = {}
+    total_diff_chars = 0
+    for fc in sorted_files:
+        changed_file = change_set_files.get(fc.path)
+        if changed_file and changed_file.hunks:
+            diff_lines = []
+            for i, hunk in enumerate(changed_file.hunks):
+                diff_lines.append(
+                    f"--- Hunk {i + 1} (starting at line {hunk.start}) ---"
+                )
+                for diff_line in hunk.lines:
+                    diff_lines.append(diff_line)
+                diff_lines.append("")
+            raw_diffs[fc.path] = "\n".join(diff_lines)
+            total_diff_chars += len(raw_diffs[fc.path])
+
+    # Phase 2: Determine per-file cap based on total diff size
+    if total_diff_chars <= INLINE_DIFF_CHAR_BUDGET:
+        per_file_cap = MAX_TOOL_RESULT_CHARS  # 12K — everything fits
+    else:
+        num_files = max(1, len(raw_diffs))
+        per_file_cap = max(2_000, INLINE_DIFF_CHAR_BUDGET // num_files)
+
+    # Phase 3: Build message with ALL diffs included
     for fc in sorted_files:
         lines.append(f"### {fc.path}")
         lines.append(f"- Risk Score: {fc.risk_score:.1f}")
@@ -575,12 +666,21 @@ def _build_initial_message(code_context: CodeContext) -> str:
             lines.append(f"- Behavior: {fc.summary.behavior}")
             if fc.summary.key_functions:
                 lines.append(f"- Key Functions: {', '.join(fc.summary.key_functions)}")
+
+        # Embed diff for EVERY file
+        if fc.path in raw_diffs:
+            diff_text = raw_diffs[fc.path]
+            if len(diff_text) > per_file_cap:
+                diff_text = _truncate_diff(diff_text, per_file_cap)
+            lines.append("#### Diff")
+            lines.append(diff_text)
+
         lines.append("")
 
     lines.append(
-        "Review these files using the available tools. "
-        "Start with the highest-risk files. "
-        "Call submit_review when you are done."
+        "ALL changed files above include their diffs inline. "
+        "Analyze every diff for issues, then call submit_review with your findings. "
+        "Use read_file_diff only if a diff was truncated and you need the full version."
     )
 
     return "\n".join(lines)
@@ -777,7 +877,7 @@ def _build_budget_exhausted_result(ctx: ToolContext) -> ReviewResult:
 # Main Agentic Loop
 # ---------------------------------------------------------------------------
 
-MAX_ITERATIONS = 25
+MAX_ITERATIONS = 15
 
 
 @activity.defn(name="agentic_review")
@@ -815,8 +915,16 @@ async def agentic_review(
 
     # Build initial conversation
     system_prompt = _build_review_system_prompt()
-    initial_message = _build_initial_message(ctx_obj)
+    initial_message = _build_initial_message(ctx_obj, cs_files_map)
     messages: list[dict] = [{"role": "user", "content": initial_message}]
+
+    # Pre-populate files_analyzed for ALL files with inline diffs
+    sorted_files = sorted(
+        ctx_obj.files.values(), key=lambda f: f.risk_score, reverse=True
+    )
+    for fc in sorted_files:
+        if fc.path in cs_files_map and fc.path not in ctx.files_analyzed:
+            ctx.files_analyzed.append(fc.path)
 
     # Import Anthropic inside activity to avoid Temporal sandbox restrictions
     from anthropic import Anthropic
@@ -840,10 +948,9 @@ async def agentic_review(
             review_result = _build_budget_exhausted_result(ctx)
             break
 
-        # Compress old context if budget is tight
-        if budget.should_summarize:
-            activity.heartbeat("Budget pressure: summarizing old context...")
-            messages = _summarize_old_context(messages, ctx)
+        # Evict old tool results every iteration to prevent quadratic token growth
+        if iteration > 2:
+            messages = _compact_conversation_history(messages, preserve_count=2)
 
         # Call the model
         try:
@@ -964,7 +1071,7 @@ async def agentic_review(
             tool_results.append({
                 "type": "tool_result",
                 "tool_use_id": tool_use_id,
-                "content": result_text,
+                "content": _cap_tool_result(result_text, tool_name),
             })
 
         # If submit_review was called, exit the loop
@@ -974,7 +1081,51 @@ async def agentic_review(
         # Append tool results as user message
         messages.append({"role": "user", "content": tool_results})
 
-    # If loop exhausted without a result
+    # If loop exhausted without a result, force a final submission
+    if review_result is None:
+        activity.heartbeat("Max iterations reached — forcing final submission")
+        messages.append({
+            "role": "user",
+            "content": (
+                "You have reached the maximum iteration limit. "
+                "Call submit_review NOW with your findings from the files "
+                "you have already reviewed. If you found no issues, submit "
+                "with an empty findings list and say the code looks clean."
+            ),
+        })
+
+        try:
+            response, llm_span = traced_anthropic_call(
+                client,
+                span_name="review_forced_submit",
+                metadata={
+                    "iteration": "forced_submit",
+                    "files_analyzed": list(ctx.files_analyzed),
+                },
+                model="claude-sonnet-4-20250514",
+                max_tokens=4096,
+                temperature=0,
+                system=system_prompt,
+                messages=messages,
+                tools=[t for t in REVIEW_TOOLS if t["name"] == "submit_review"],
+            )
+            trace_spans.append(llm_span)
+            budget.update(
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+            )
+
+            for block in response.content:
+                if block.type == "tool_use" and block.name == "submit_review":
+                    review_result = _parse_submit_review(block.input)
+                    review_result.warnings.append(
+                        "Submitted via forced iteration limit"
+                    )
+                    break
+        except Exception:
+            pass  # Fall through to the static fallback below
+
+    # Final fallback if forced submission also failed
     if review_result is None:
         review_result = ReviewResult(
             summary="Review did not complete within iteration limit",
