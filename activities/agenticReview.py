@@ -800,59 +800,6 @@ def _reconstruct_change_set(data: dict) -> ChangeSet:
     )
 
 
-def _validate_finding(finding: ReviewFinding, repo_path: str) -> ReviewFinding:
-    """Validate a finding by checking if evidence exists in the actual file."""
-    file_full_path = Path(repo_path) / finding.file_path
-
-    if not file_full_path.exists():
-        return ReviewFinding(
-            file_path=finding.file_path,
-            line_number=finding.line_number,
-            severity=finding.severity,
-            category=finding.category,
-            title=finding.title,
-            evidence=finding.evidence,
-            suggestion=finding.suggestion,
-            confidence=finding.confidence,
-            validated=False,
-        )
-
-    try:
-        with open(file_full_path, "r", encoding="utf-8") as f:
-            file_content = f.read()
-    except (UnicodeDecodeError, IOError):
-        return ReviewFinding(
-            file_path=finding.file_path,
-            line_number=finding.line_number,
-            severity=finding.severity,
-            category=finding.category,
-            title=finding.title,
-            evidence=finding.evidence,
-            suggestion=finding.suggestion,
-            confidence=finding.confidence,
-            validated=False,
-        )
-
-    def normalize(text: str) -> str:
-        return " ".join(text.split())
-
-    normalized_content = normalize(file_content)
-    normalized_evidence = normalize(finding.evidence)
-    is_valid = normalized_evidence in normalized_content if normalized_evidence else False
-
-    return ReviewFinding(
-        file_path=finding.file_path,
-        line_number=finding.line_number,
-        severity=finding.severity,
-        category=finding.category,
-        title=finding.title,
-        evidence=finding.evidence,
-        suggestion=finding.suggestion,
-        confidence=finding.confidence,
-        validated=is_valid,
-    )
-
-
 def _parse_submit_review(tool_input: dict) -> ReviewResult:
     """Parse the submit_review tool call into a ReviewResult."""
     findings = []
@@ -1211,22 +1158,25 @@ async def run_review_core(
             stats={"critical": 0, "high": 0, "medium": 0, "low": 0},
         )
 
-    # Validate all findings against actual files
-    heartbeat(f"Validating {len(review_result.findings)} findings...")
-    validated_findings = []
-    validated_count = 0
-    for finding in review_result.findings:
-        validated = _validate_finding(finding, repo_path)
-        validated_findings.append(validated)
-        if validated.validated:
-            validated_count += 1
+    # Risk-adjusted evidence validation
+    from activities.evidenceValidation import validate_findings_batch
 
+    heartbeat(f"Validating {len(review_result.findings)} findings...")
+    validated_findings, validation_span = validate_findings_batch(
+        review_result.findings, repo_path, cs_files_map,
+    )
+    trace_spans.append(validation_span)
+
+    validated_count = sum(1 for f in validated_findings if f.validated)
     heartbeat(f"Validated {validated_count}/{len(validated_findings)} findings")
 
-    # Filter out low-confidence findings — below this threshold they are likely noise
+    # Filter on adjusted confidence (uses post-validation confidence if available)
     CONFIDENCE_THRESHOLD = 0.7
     before_filter = len(validated_findings)
-    validated_findings = [f for f in validated_findings if f.confidence >= CONFIDENCE_THRESHOLD]
+    validated_findings = [
+        f for f in validated_findings
+        if (f.confidence_adjusted if f.confidence_adjusted is not None else f.confidence) >= CONFIDENCE_THRESHOLD
+    ]
     filtered_count = before_filter - len(validated_findings)
     if filtered_count > 0:
         heartbeat(f"Filtered {filtered_count} low-confidence findings (threshold={CONFIDENCE_THRESHOLD})")

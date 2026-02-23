@@ -114,6 +114,8 @@ class ReviewFinding:
     suggestion: str               # Recommended fix or action
     confidence: float             # 0.0-1.0 confidence in this finding
     validated: bool = False       # Set by validation step
+    evidence_context: Optional[str] = None    # Actual fetched code from repo
+    confidence_adjusted: Optional[float] = None  # Post-validation confidence
 
 
 @dataclass(frozen=True)

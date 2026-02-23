@@ -22,6 +22,7 @@ from benchmarks.dataclasses import (
     CoverageMetrics,
     CorrectnessMetrics,
     EfficiencyMetrics,
+    EvidenceValidationMetrics,
     TraceMetrics,
 )
 
@@ -57,12 +58,14 @@ def analyze_trace(
     coverage = _compute_coverage(trace_log, review, benchmark_case)
     efficiency = _compute_efficiency(trace_log, review, score, benchmark_case)
     correctness = _compute_correctness(review, match_details, benchmark_case)
+    evidence_validation = _compute_evidence_validation(trace_log)
 
     return TraceMetrics(
         case_id=case_result.get("case_id", ""),
         coverage=coverage,
         efficiency=efficiency,
         correctness=correctness,
+        evidence_validation=evidence_validation,
     )
 
 
@@ -116,6 +119,16 @@ def aggregate_trace_metrics(case_metrics: list[TraceMetrics]) -> dict:
         ),
         "avg_severity_accuracy": _safe_mean(
             [m.correctness.severity_accuracy for m in case_metrics]
+        ),
+        # Evidence Validation
+        "avg_validation_rate": _safe_mean(
+            [m.evidence_validation.validation_rate for m in case_metrics]
+        ),
+        "avg_confidence_delta": _safe_mean(
+            [m.evidence_validation.avg_confidence_delta for m in case_metrics]
+        ),
+        "total_rejections": sum(
+            m.evidence_validation.rejection_count for m in case_metrics
         ),
     }
 
@@ -373,6 +386,24 @@ def _compute_correctness(
         category_accuracy=round(category_accuracy, 3),
         severity_accuracy=round(severity_accuracy, 3),
     )
+
+
+# ---------------------------------------------------------------------------
+# Evidence Validation
+# ---------------------------------------------------------------------------
+
+def _compute_evidence_validation(trace_log: list[dict]) -> EvidenceValidationMetrics:
+    """Extract evidence validation metrics from the validation span."""
+    for span in trace_log:
+        if span.get("name") == "evidence_validation" or span.get("span_type") == "validation":
+            meta = span.get("metadata", {})
+            return EvidenceValidationMetrics(
+                validation_rate=round(meta.get("validation_rate", 0.0), 3),
+                avg_confidence_delta=round(meta.get("avg_confidence_delta", 0.0), 4),
+                rejection_count=meta.get("rejection_count", 0),
+                signal_rates=meta.get("signals_summary", {}),
+            )
+    return EvidenceValidationMetrics()
 
 
 # ---------------------------------------------------------------------------

@@ -149,6 +149,15 @@ def _print_case_trace_metrics(tm):
     print(f"      Category accuracy:  {r.category_accuracy:.0%}")
     print(f"      Severity accuracy:  {r.severity_accuracy:.0%}")
 
+    ev = tm.evidence_validation
+    print(f"    Evidence Validation:")
+    print(f"      Validation rate:    {ev.validation_rate:.0%}")
+    print(f"      Avg conf delta:     {ev.avg_confidence_delta:+.4f}")
+    print(f"      Rejections:         {ev.rejection_count}")
+    if ev.signal_rates:
+        sigs = ", ".join(f"{k}={v:.0%}" for k, v in ev.signal_rates.items())
+        print(f"      Signals:            {sigs}")
+
 
 def _print_trace_aggregate(all_trace_metrics):
     """Print suite-level trace metric aggregates."""
@@ -173,6 +182,10 @@ def _print_trace_aggregate(all_trace_metrics):
     print(f"    Avg evidence validated: {agg['avg_evidence_validation_rate']:.0%}")
     print(f"    Avg category accuracy:  {agg['avg_category_accuracy']:.0%}")
     print(f"    Avg severity accuracy:  {agg['avg_severity_accuracy']:.0%}")
+    print(f"  Evidence Validation:")
+    print(f"    Avg validation rate:    {agg.get('avg_validation_rate', 0):.0%}")
+    print(f"    Avg confidence delta:   {agg.get('avg_confidence_delta', 0):+.4f}")
+    print(f"    Total rejections:       {agg.get('total_rejections', 0)}")
 
 
 # ---------------------------------------------------------------------------
@@ -273,6 +286,8 @@ def compare_results(path_a: Path, path_b: Path):
             "avg_evidence_validation_rate",
             "avg_category_accuracy",
             "avg_severity_accuracy",
+            "avg_validation_rate",
+            "avg_confidence_delta",
         ]
 
         print(f"\n  {'Trace Metrics':<30} {'A':>8} {'B':>8} {'Delta':>8}")

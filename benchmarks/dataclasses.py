@@ -151,9 +151,19 @@ class CorrectnessMetrics:
 
 
 @dataclass
+class EvidenceValidationMetrics:
+    """Metrics from the evidence validation pipeline stage."""
+    validation_rate: float = 0.0           # validated / total findings
+    avg_confidence_delta: float = 0.0      # mean confidence change
+    rejection_count: int = 0               # findings dropped by validation
+    signal_rates: dict = field(default_factory=dict)  # {"line_in_diff": 0.8, ...}
+
+
+@dataclass
 class TraceMetrics:
     """All trace metrics for a single benchmark case."""
     case_id: str = ""
     coverage: CoverageMetrics = field(default_factory=CoverageMetrics)
     efficiency: EfficiencyMetrics = field(default_factory=EfficiencyMetrics)
     correctness: CorrectnessMetrics = field(default_factory=CorrectnessMetrics)
+    evidence_validation: EvidenceValidationMetrics = field(default_factory=EvidenceValidationMetrics)
