@@ -110,3 +110,50 @@ class SuiteScore:
     # Cost
     total_token_usage: Optional[dict] = None
     total_wall_time_seconds: float = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Trace Metrics (computed post-hoc from trace_log data)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class CoverageMetrics:
+    """Did the agent see the right things?"""
+    file_coverage: float = 0.0              # files_analyzed / files_changed
+    files_analyzed: int = 0
+    files_changed: int = 0
+    bug_file_coverage: float = 0.0          # expected finding files accessed / total
+    bug_line_coverage: float = 0.0          # expected findings with tool calls in range / total
+    truncated_bug_files: list[str] = field(default_factory=list)
+    diff_truncation_rate: float = 0.0       # files truncated / total files
+
+
+@dataclass
+class EfficiencyMetrics:
+    """Is the agent using resources well?"""
+    tokens_per_tp: float = 0.0              # total_tokens / max(1, TPs)
+    tool_calls_total: int = 0
+    tool_calls_per_iteration: float = 0.0
+    redundant_tool_calls: int = 0           # same file+tool called >1 time
+    auto_route_rate: float = 0.0            # auto_routed calls / total tool calls
+    iterations_used: int = 0
+    exploration_overhead: float = 0.0       # tool calls to non-bug files / total calls
+
+
+@dataclass
+class CorrectnessMetrics:
+    """Are the agent's decisions accurate?"""
+    tool_call_hit_rate: float = 0.0         # tool calls targeting bug files / total calls
+    confidence_calibration: dict = field(default_factory=dict)  # {"high": TP_rate, "medium": TP_rate}
+    evidence_validation_rate: float = 0.0   # findings with validated=True / total
+    category_accuracy: float = 0.0          # TPs with correct category / total TPs
+    severity_accuracy: float = 0.0          # TPs with severity >= minimum / total TPs
+
+
+@dataclass
+class TraceMetrics:
+    """All trace metrics for a single benchmark case."""
+    case_id: str = ""
+    coverage: CoverageMetrics = field(default_factory=CoverageMetrics)
+    efficiency: EfficiencyMetrics = field(default_factory=EfficiencyMetrics)
+    correctness: CorrectnessMetrics = field(default_factory=CorrectnessMetrics)

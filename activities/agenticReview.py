@@ -569,13 +569,24 @@ ALL changed files have their diffs included inline in the initial message. Your 
    - Use request_deep_analysis for complex files needing focused expert review
 3. REPORT: Call submit_review with your findings. Do this BEFORE you run out of iterations.
 
-Review categories:
-- bug: Logic errors, null references, race conditions, incorrect behavior
-- security: Injection vulnerabilities, auth issues, data exposure
-- performance: N+1 queries, memory leaks, inefficient algorithms
-- style: Poor naming, high complexity, missing error handling
+Review categories (only report issues in these categories):
+- bug: Logic errors, null references, race conditions, incorrect behavior — code that will malfunction
+- security: Injection vulnerabilities, auth issues, data exposure — code that creates security risk
+- performance: N+1 queries, memory leaks, inefficient algorithms — measurable runtime impact
 
-Rules:
+Do NOT report:
+- Naming conventions, variable naming preferences, or style opinions
+- Import organization or code structure preferences
+- Architectural preferences ("should use service layer", "inconsistent pattern")
+- Any issue you would assign confidence below 0.7
+
+Precision rules (strictly enforced):
+- A false positive wastes developer time and erodes trust in the tool. Only report findings you are highly confident are genuine issues.
+- When in doubt, omit. It is better to miss a minor issue than to report a false positive.
+- Confidence calibration: 0.9+ = issue is directly visible in the diff and clearly harmful; 0.7–0.9 = strong evidence, likely real; below 0.7 = skip it.
+- Do not report issues just because something "could" be a problem in theory. Report only what you can ground in the actual changed code.
+
+Other rules:
 - Analyze EVERY file's diff, even small changes. Subtle operator changes can be critical bugs.
 - Be specific — evidence must be actual code you have seen via inline diffs or tools
 - If the code looks good, say so. Don't invent issues.
@@ -596,12 +607,16 @@ INLINE_DIFF_CHAR_BUDGET = 120_000  # ~30K tokens for all inline diffs combined
 def _build_initial_message(
     code_context: CodeContext,
     change_set_files: dict[str, ChangedFile],
-) -> str:
+) -> tuple[str, dict]:
     """Build the initial user message from CodeContext summaries.
 
     Embeds diffs inline for ALL files using a token-aware character budget.
     If total diff size exceeds INLINE_DIFF_CHAR_BUDGET, per-file caps shrink
     proportionally so every file still gets its diff included.
+
+    Returns:
+        (message_text, context_metadata) — metadata captures what was provided
+        for downstream trace analysis (truncation info, risk scores, etc.).
     """
     lines = [
         "# Pull Request Code Review",
@@ -655,6 +670,7 @@ def _build_initial_message(
         per_file_cap = max(2_000, INLINE_DIFF_CHAR_BUDGET // num_files)
 
     # Phase 3: Build message with ALL diffs included
+    truncated_files: list[str] = []
     for fc in sorted_files:
         lines.append(f"### {fc.path}")
         lines.append(f"- Risk Score: {fc.risk_score:.1f}")
@@ -672,6 +688,7 @@ def _build_initial_message(
             diff_text = raw_diffs[fc.path]
             if len(diff_text) > per_file_cap:
                 diff_text = _truncate_diff(diff_text, per_file_cap)
+                truncated_files.append(fc.path)
             lines.append("#### Diff")
             lines.append(diff_text)
 
@@ -683,7 +700,17 @@ def _build_initial_message(
         "Use read_file_diff only if a diff was truncated and you need the full version."
     )
 
-    return "\n".join(lines)
+    message_text = "\n".join(lines)
+
+    context_meta = {
+        "files_with_diffs": list(raw_diffs.keys()),
+        "total_diff_chars": total_diff_chars,
+        "per_file_cap": per_file_cap,
+        "truncated_files": truncated_files,
+        "file_risk_scores": {fc.path: fc.risk_score for fc in sorted_files},
+    }
+
+    return message_text, context_meta
 
 
 # ---------------------------------------------------------------------------
@@ -939,7 +966,7 @@ async def run_review_core(
 
     # Build initial conversation
     system_prompt = _build_review_system_prompt()
-    initial_message = _build_initial_message(ctx_obj, cs_files_map)
+    initial_message, context_meta = _build_initial_message(ctx_obj, cs_files_map)
     messages: list[dict] = [{"role": "user", "content": initial_message}]
 
     # Pre-populate files_analyzed for ALL files with inline diffs
@@ -956,6 +983,31 @@ async def run_review_core(
 
     client = Anthropic()
     trace_spans: list[TraceSpan] = []
+
+    # Record what the system provided to the agent (for trace analysis)
+    now = time.time()
+    trace_spans.append(TraceSpan(
+        name="context_snapshot",
+        span_type="context",
+        start_time=now,
+        end_time=now,
+        metadata={
+            "changed_files": list(cs_files_map.keys()),
+            "context_files": list(ctx_obj.files.keys()),
+            "file_risk_scores": context_meta["file_risk_scores"],
+            "files_with_diffs": context_meta["files_with_diffs"],
+            "truncated_files": context_meta["truncated_files"],
+            "initial_message_chars": len(initial_message),
+            "total_diff_chars": context_meta["total_diff_chars"],
+            "per_file_cap": context_meta["per_file_cap"],
+            "overview_totals": {
+                "files_changed": ctx_obj.overview.totals.files_changed,
+                "lines_added": ctx_obj.overview.totals.lines_added,
+                "lines_removed": ctx_obj.overview.totals.lines_removed,
+                "total_hunks": ctx_obj.overview.totals.total_hunks,
+            },
+        },
+    ))
 
     review_result: Optional[ReviewResult] = None
     iteration = 0
@@ -1170,6 +1222,14 @@ async def run_review_core(
             validated_count += 1
 
     heartbeat(f"Validated {validated_count}/{len(validated_findings)} findings")
+
+    # Filter out low-confidence findings — below this threshold they are likely noise
+    CONFIDENCE_THRESHOLD = 0.7
+    before_filter = len(validated_findings)
+    validated_findings = [f for f in validated_findings if f.confidence >= CONFIDENCE_THRESHOLD]
+    filtered_count = before_filter - len(validated_findings)
+    if filtered_count > 0:
+        heartbeat(f"Filtered {filtered_count} low-confidence findings (threshold={CONFIDENCE_THRESHOLD})")
 
     # Recalculate stats with validated findings
     stats = {"critical": 0, "high": 0, "medium": 0, "low": 0}

@@ -25,7 +25,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # Load .env from project root (same one the main pipeline uses)
 from dotenv import load_dotenv
-load_dotenv(PROJECT_ROOT / ".env")
+load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 from activities.gitDiff import parse_diff_output
 from activities.prioritizeFiles import compute_risk_score, should_ignore_file
@@ -36,6 +36,7 @@ from utils.dataclasses import (
 )
 from benchmarks.dataclasses import BenchmarkCase, ExpectedFinding, ExpectedClean
 from benchmarks.scorer import score_review
+from benchmarks.trace_analyzer import analyze_trace, aggregate_trace_metrics
 
 FIXTURE_REPO = Path(__file__).resolve().parent / "fixture_repo"
 CASES_DIR = Path(__file__).resolve().parent / "cases"
@@ -284,6 +285,7 @@ async def run_case(case: BenchmarkCase, model: str) -> dict:
             "token_usage": review_result.token_usage,
             "iterations": review_result.iterations,
             "files_analyzed": review_result.files_analyzed,
+            "trace_log": review_result.trace_log,
         },
     }
 
@@ -310,6 +312,14 @@ async def main():
         result = await run_case(case, model)
         results.append(result)
 
+    # Compute trace metrics for each case
+    case_trace_metrics = []
+    for result, case in zip(results, cases):
+        if result.get("review_result", {}).get("trace_log"):
+            tm = analyze_trace(result, case)
+            if tm:
+                case_trace_metrics.append(tm)
+
     # Aggregate and save
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
     model_short = args.model if args.model in MODEL_ALIASES else model[:20]
@@ -320,6 +330,7 @@ async def main():
         "model": model,
         "cases": results,
         "aggregate": _compute_aggregate(results),
+        "trace_aggregate": aggregate_trace_metrics(case_trace_metrics),
     }
 
     with open(output_path, "w") as f:

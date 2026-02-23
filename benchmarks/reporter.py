@@ -10,6 +10,40 @@ import json
 import sys
 from pathlib import Path
 
+from benchmarks.trace_analyzer import analyze_trace, aggregate_trace_metrics
+
+
+# ---------------------------------------------------------------------------
+# Case loading (shared with runner)
+# ---------------------------------------------------------------------------
+
+CASES_DIR = Path(__file__).parent / "cases"
+RESULTS_DIR = Path(__file__).parent / "results"
+
+
+def _resolve_latest() -> Path:
+    """Return the most recent result JSON in the results directory."""
+    results = sorted(RESULTS_DIR.glob("run_*.json"))
+    if not results:
+        print("No result files found in", RESULTS_DIR)
+        sys.exit(1)
+    return results[-1]
+
+
+def _load_case_definitions() -> dict:
+    """Load all benchmark case definitions, keyed by case_id."""
+    from benchmarks.runner import load_case
+
+    case_defs = {}
+    for path in sorted(CASES_DIR.glob("*.json")):
+        bc = load_case(path)
+        case_defs[bc.case_id] = bc
+    return case_defs
+
+
+# ---------------------------------------------------------------------------
+# Show
+# ---------------------------------------------------------------------------
 
 def show_results(result_path: Path):
     """Pretty-print a single benchmark run."""
@@ -21,6 +55,10 @@ def show_results(result_path: Path):
     print(f"  Model: {data['model']}")
     print(f"  Timestamp: {data['timestamp']}")
     print(f"{'='*70}")
+
+    # Load case definitions for trace analysis
+    case_defs = _load_case_definitions()
+    all_trace_metrics = []
 
     for case in data["cases"]:
         score = case["score"]
@@ -55,6 +93,14 @@ def show_results(result_path: Path):
         tokens = score.get("token_usage") or {}
         print(f"    Tokens: {tokens.get('total', 'N/A')}  Iterations: {score.get('iterations', 'N/A')}  Time: {score.get('wall_time_seconds', 0):.1f}s")
 
+        # Trace metrics (if trace_log is available)
+        bc = case_defs.get(case["case_id"])
+        if bc and review.get("trace_log"):
+            tm = analyze_trace(case, bc)
+            if tm:
+                all_trace_metrics.append(tm)
+                _print_case_trace_metrics(tm)
+
     # Aggregate
     agg = data.get("aggregate", {})
     print(f"\n{'='*70}")
@@ -68,6 +114,70 @@ def show_results(result_path: Path):
     print(f"  Total Tokens:  {agg.get('total_tokens', 0)}")
     print(f"  Total Time:    {agg.get('total_wall_time', 0):.1f}s")
 
+    # Trace aggregate
+    if all_trace_metrics:
+        _print_trace_aggregate(all_trace_metrics)
+
+
+def _print_case_trace_metrics(tm):
+    """Print trace metrics for a single case."""
+    c = tm.coverage
+    e = tm.efficiency
+    r = tm.correctness
+
+    print(f"    --- Trace Metrics ---")
+    print(f"    Coverage:")
+    print(f"      File coverage:      {c.file_coverage:.0%} ({c.files_analyzed}/{c.files_changed})")
+    print(f"      Bug file coverage:  {c.bug_file_coverage:.0%}")
+    print(f"      Bug line coverage:  {c.bug_line_coverage:.0%}")
+    if c.truncated_bug_files:
+        print(f"      Truncated bug files: {', '.join(c.truncated_bug_files)}")
+    if c.diff_truncation_rate > 0:
+        print(f"      Diff truncation:    {c.diff_truncation_rate:.0%}")
+    print(f"    Efficiency:")
+    print(f"      Tokens/TP:          {e.tokens_per_tp:.0f}")
+    print(f"      Tool calls:         {e.tool_calls_total} ({e.tool_calls_per_iteration:.1f}/iter)")
+    print(f"      Redundant calls:    {e.redundant_tool_calls}")
+    if e.exploration_overhead > 0:
+        print(f"      Exploration overhead: {e.exploration_overhead:.0%}")
+    print(f"    Correctness:")
+    print(f"      Finding hit rate:   {r.tool_call_hit_rate:.0%}")
+    print(f"      Evidence validated: {r.evidence_validation_rate:.0%}")
+    if r.confidence_calibration:
+        cal_parts = [f"{k}={v:.0%}" for k, v in r.confidence_calibration.items()]
+        print(f"      Confidence cal:     {', '.join(cal_parts)}")
+    print(f"      Category accuracy:  {r.category_accuracy:.0%}")
+    print(f"      Severity accuracy:  {r.severity_accuracy:.0%}")
+
+
+def _print_trace_aggregate(all_trace_metrics):
+    """Print suite-level trace metric aggregates."""
+    agg = aggregate_trace_metrics(all_trace_metrics)
+
+    print(f"\n  {'-'*50}")
+    print(f"  TRACE AGGREGATE ({len(all_trace_metrics)} cases with traces)")
+    print(f"  {'-'*50}")
+    print(f"  Coverage:")
+    print(f"    Avg file coverage:      {agg['avg_file_coverage']:.0%}")
+    print(f"    Avg bug file coverage:  {agg['avg_bug_file_coverage']:.0%}")
+    print(f"    Avg bug line coverage:  {agg['avg_bug_line_coverage']:.0%}")
+    print(f"    Avg diff truncation:    {agg['avg_diff_truncation_rate']:.0%}")
+    print(f"  Efficiency:")
+    print(f"    Avg tokens/TP:          {agg['avg_tokens_per_tp']:.0f}")
+    print(f"    Total tool calls:       {agg['total_tool_calls']}")
+    print(f"    Total redundant calls:  {agg['total_redundant_tool_calls']}")
+    print(f"    Avg auto-route rate:    {agg['avg_auto_route_rate']:.0%}")
+    print(f"    Avg exploration overhead: {agg['avg_exploration_overhead']:.0%}")
+    print(f"  Correctness:")
+    print(f"    Avg finding hit rate:   {agg['avg_tool_call_hit_rate']:.0%}")
+    print(f"    Avg evidence validated: {agg['avg_evidence_validation_rate']:.0%}")
+    print(f"    Avg category accuracy:  {agg['avg_category_accuracy']:.0%}")
+    print(f"    Avg severity accuracy:  {agg['avg_severity_accuracy']:.0%}")
+
+
+# ---------------------------------------------------------------------------
+# Compare
+# ---------------------------------------------------------------------------
 
 def compare_results(path_a: Path, path_b: Path):
     """Compare two benchmark runs side-by-side."""
@@ -129,13 +239,61 @@ def compare_results(path_a: Path, path_b: Path):
     pct_t = ((time_b - time_a) / time_a * 100) if time_a else 0
     print(f"  {'total_wall_time':<25} {time_a:>7.1f}s {time_b:>7.1f}s {pct_t:>+7.1f}%")
 
+    # Trace aggregate comparison
+    case_defs = _load_case_definitions()
+    full_cases_a = {c["case_id"]: c for c in data_a["cases"]}
+    full_cases_b = {c["case_id"]: c for c in data_b["cases"]}
+
+    trace_a = []
+    trace_b = []
+    for cid in all_case_ids:
+        bc = case_defs.get(cid)
+        if not bc:
+            continue
+        ca = full_cases_a.get(cid)
+        cb = full_cases_b.get(cid)
+        if ca and ca.get("review_result", {}).get("trace_log"):
+            tm = analyze_trace(ca, bc)
+            if tm:
+                trace_a.append(tm)
+        if cb and cb.get("review_result", {}).get("trace_log"):
+            tm = analyze_trace(cb, bc)
+            if tm:
+                trace_b.append(tm)
+
+    if trace_a or trace_b:
+        agg_ta = aggregate_trace_metrics(trace_a) if trace_a else {}
+        agg_tb = aggregate_trace_metrics(trace_b) if trace_b else {}
+
+        trace_metrics = [
+            "avg_file_coverage",
+            "avg_bug_file_coverage",
+            "avg_tokens_per_tp",
+            "avg_tool_call_hit_rate",
+            "avg_evidence_validation_rate",
+            "avg_category_accuracy",
+            "avg_severity_accuracy",
+        ]
+
+        print(f"\n  {'Trace Metrics':<30} {'A':>8} {'B':>8} {'Delta':>8}")
+        print(f"  {'-'*30} {'-'*8} {'-'*8} {'-'*8}")
+        for metric in trace_metrics:
+            va = agg_ta.get(metric, 0)
+            vb = agg_tb.get(metric, 0)
+            print(f"  {metric:<30} {va:>8.3f} {vb:>8.3f} {vb - va:>+8.3f}")
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(description="LGTM Benchmark Reporter")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     show_parser = subparsers.add_parser("show", help="Show results from a single run")
-    show_parser.add_argument("result_file", type=Path)
+    show_parser.add_argument("result_file", nargs="?", default="latest",
+                             help="Path to result JSON, or 'latest' (default)")
 
     compare_parser = subparsers.add_parser("compare", help="Compare two runs")
     compare_parser.add_argument("file_a", type=Path, help="First (baseline) run")
@@ -144,7 +302,8 @@ def main():
     args = parser.parse_args()
 
     if args.command == "show":
-        show_results(args.result_file)
+        result_file = _resolve_latest() if args.result_file == "latest" else Path(args.result_file)
+        show_results(result_file)
     elif args.command == "compare":
         compare_results(args.file_a, args.file_b)
 
