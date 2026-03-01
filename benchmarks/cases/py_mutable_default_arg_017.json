@@ -1,0 +1,35 @@
+{
+  "case_id": "py_mutable_default_arg_017",
+  "name": "Mutable default arguments in add_tag and build_cart accumulate state across calls",
+  "description": "add_tag uses 'existing_tags: list[str] = []' and build_cart uses 'cart: dict = {}' as default argument values. Python evaluates default arguments once at function-definition time, so the same list/dict object is shared across all calls that omit the argument.",
+  "base_ref": "bench/py_mutable_default_arg_017/base",
+  "head_ref": "bench/py_mutable_default_arg_017/head",
+  "expected_findings": [
+    {
+      "file_path": "app/services/tag_service.py",
+      "line_range": [5, 18],
+      "severity_min": "medium",
+      "category": "bug",
+      "description": "add_tag has a mutable list default argument 'existing_tags: list[str] = []'. The list is created once and shared across all calls; appending to it accumulates tags across invocations when the argument is omitted.",
+      "keywords": ["mutable default", "list", "default argument", "accumulate", "shared", "None", "append", "function definition"],
+      "required": true
+    },
+    {
+      "file_path": "app/services/tag_service.py",
+      "line_range": [18, 27],
+      "severity_min": "medium",
+      "category": "bug",
+      "description": "build_cart has a mutable dict default argument 'cart: dict = {}'. The same dict object is reused across calls, causing items from previous calls to persist when the argument is omitted.",
+      "keywords": ["mutable default", "dict", "default argument", "accumulate", "shared", "None", "cart", "function definition"],
+      "required": false
+    }
+  ],
+  "expected_clean": [
+    {
+      "file_path": "app/utils/tag_formatter.py",
+      "description": "Pure string formatting utilities with no mutable state",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["bug", "python", "mutable-default-argument", "state", "medium"]
+}

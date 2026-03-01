@@ -51,6 +51,9 @@ _IDENT_RE = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
 # Delimiters used to split evidence into code vs explanation fragments
 _FRAGMENT_DELIMITERS = re.compile(r" - | -- |\n|\. (?=[A-Z])")
 
+# Regex to extract inline code from backtick-delimited spans (e.g. `c.count++`)
+_BACKTICK_RE = re.compile(r"`([^`]+)`")
+
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -190,11 +193,18 @@ def validate_evidence(
     positive_signals = ["line_in_diff", "symbols_found", "code_fragment_found"]
     weights = {"line_in_diff": 0.05, "symbols_found": 0.05, "code_fragment_found": 0.10}
 
-    any_positive = any(signals.get(s, False) for s in positive_signals)
+    # Content signals ground the finding in actual code text.
+    # line_in_diff alone only confirms address (line is in the diff), not content.
+    content_signals = ["symbols_found", "code_fragment_found"]
+    has_content = any(signals.get(s, False) for s in content_signals)
 
-    if not any_positive:
-        # File/line valid but nothing matches -- penalty
-        return False, -0.15, signals
+    if not has_content:
+        if not any(signals.get(s, False) for s in positive_signals):
+            # File/line valid but nothing matches at all — small penalty
+            return False, -0.15, signals
+        # line_in_diff fired but no content grounding — stronger penalty to push
+        # adjusted confidence below the 0.7 filter threshold
+        return False, -0.25, signals
 
     delta = sum(weights[s] for s in positive_signals if signals.get(s, False))
     return True, delta, signals
@@ -217,13 +227,24 @@ def _check_symbols(evidence: str, code: str) -> bool:
 
 def _check_code_fragments(evidence: str, code: str) -> bool:
     """Check if at least one code fragment from evidence appears in the code."""
-    fragments = _FRAGMENT_DELIMITERS.split(evidence)
 
     def normalize(text: str) -> str:
         return " ".join(text.split())
 
     normalized_code = normalize(code)
 
+    # First: extract inline code from backticks — highest-fidelity signal.
+    # Evidence is typically structured as "[prose] `code` [prose]", so backtick
+    # contents are verbatim code that should appear in the fetched snippet.
+    for m in _BACKTICK_RE.finditer(evidence):
+        frag = m.group(1).strip()
+        if len(frag.replace(" ", "")) < 4:
+            continue
+        if normalize(frag) in normalized_code:
+            return True
+
+    # Fallback: delimiter-split fragments (catches evidence without backticks)
+    fragments = _FRAGMENT_DELIMITERS.split(evidence)
     for frag in fragments:
         frag = frag.strip()
         # Skip very short fragments (likely not code)

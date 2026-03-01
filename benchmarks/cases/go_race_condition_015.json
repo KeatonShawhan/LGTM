@@ -1,0 +1,26 @@
+{
+  "case_id": "go_race_condition_015",
+  "name": "Data race on shared counter in RequestCounter.Increment",
+  "description": "RequestCounter.Increment increments an int field without holding the mutex. The struct declares a sync.Mutex but Increment does not lock it, so concurrent HTTP handler goroutines race on the count field.",
+  "base_ref": "bench/go_race_condition_015/base",
+  "head_ref": "bench/go_race_condition_015/head",
+  "expected_findings": [
+    {
+      "file_path": "app_go/internal/handlers/counter.go",
+      "line_range": [22, 25],
+      "severity_min": "high",
+      "category": "bug",
+      "description": "RequestCounter.Increment increments c.count without locking c.mu. Multiple goroutines calling Increment concurrently will race on the int field, causing lost updates. The mutex is declared but unused in this method.",
+      "keywords": ["race", "mutex", "lock", "sync", "atomic", "concurrent", "increment", "goroutine", "data race", "unprotected"],
+      "required": true
+    }
+  ],
+  "expected_clean": [
+    {
+      "file_path": "app_go/cmd/server/main.go",
+      "description": "Server entry point with no shared mutable state",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["bug", "go", "concurrency", "data-race", "mutex", "high"]
+}

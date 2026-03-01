@@ -1,0 +1,44 @@
+{
+  "case_id": "go_error_ignored_013",
+  "name": "Ignored error return from os.WriteFile in SaveSnapshot",
+  "description": "SaveSnapshot marshals cache entries and calls os.WriteFile, but assigns its error return to blank identifier '_', explicitly discarding it. If the write fails the caller has no indication and will assume the snapshot was persisted.",
+  "base_ref": "bench/go_error_ignored_013/base",
+  "head_ref": "bench/go_error_ignored_013/head",
+  "expected_findings": [
+    {
+      "file_path": "app_go/internal/store/cache.go",
+      "line_range": [32, 39],
+      "severity_min": "medium",
+      "category": "bug",
+      "description": "SaveSnapshot discards the error from os.WriteFile with _ = os.WriteFile(...). If the write fails (disk full, permission denied), the error is silently lost and the function returns without signalling failure to the caller.",
+      "keywords": ["error", "ignored", "discard", "WriteFile", "blank identifier", "_", "return", "check", "handle"],
+      "required": true
+    },
+    {
+      "file_path": "app_go/internal/store/cache.go",
+      "line_range": [32, 36],
+      "severity_min": "medium",
+      "category": "bug",
+      "description": "SaveSnapshot calls json.Marshal but handles the error with a silent early return — no error is propagated to the caller. The function has no return type, so marshal failures are indistinguishable from success.",
+      "keywords": ["marshal", "json", "error", "return", "propagate", "caller", "SaveSnapshot", "silent"],
+      "required": false
+    },
+    {
+      "file_path": "app_go/internal/store/cache.go",
+      "line_range": [37, 39],
+      "severity_min": "low",
+      "category": "security",
+      "description": "os.WriteFile uses permission mode 0644 (world-readable). Cache files may contain sensitive serialized data; 0600 (owner-only) would be more appropriate.",
+      "keywords": ["permission", "0644", "0600", "world-readable", "WriteFile", "sensitive", "cache"],
+      "required": false
+    }
+  ],
+  "expected_clean": [
+    {
+      "file_path": "app_go/cmd/server/main.go",
+      "description": "Server entry point with no file I/O or ignored errors",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["bug", "go", "error-handling", "ignored-error", "medium"]
+}

@@ -1,0 +1,26 @@
+{
+  "case_id": "go_goroutine_leak_012",
+  "name": "Goroutine leak — ProcessJobs launches goroutines with no WaitGroup or cancellation",
+  "description": "ProcessJobs iterates over a job slice and launches one goroutine per job using 'go func(j Job) {...}(job)' without any synchronisation. There is no sync.WaitGroup, no done channel, and context cancellation is not propagated to stop goroutines. The function returns immediately, leaving goroutines that may outlive the caller.",
+  "base_ref": "bench/go_goroutine_leak_012/base",
+  "head_ref": "bench/go_goroutine_leak_012/head",
+  "expected_findings": [
+    {
+      "file_path": "app_go/internal/handlers/jobs.go",
+      "line_range": [31, 41],
+      "severity_min": "medium",
+      "category": "bug",
+      "description": "ProcessJobs launches goroutines with no WaitGroup or cancellation mechanism. The function returns before goroutines complete, and there is no way to stop or join them — goroutines leak on every call.",
+      "keywords": ["goroutine", "leak", "WaitGroup", "cancel", "context", "done", "sync", "wait", "concurrent"],
+      "required": true
+    }
+  ],
+  "expected_clean": [
+    {
+      "file_path": "app_go/cmd/server/main.go",
+      "description": "Minimal HTTP server setup with no concurrency bugs",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["bug", "go", "concurrency", "goroutine-leak", "medium"]
+}

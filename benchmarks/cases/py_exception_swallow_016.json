@@ -1,0 +1,35 @@
+{
+  "case_id": "py_exception_swallow_016",
+  "name": "Bare except swallows all exceptions in import_users_from_csv",
+  "description": "import_users_from_csv wraps the per-row processing in 'except: pass' — a bare except with no exception type specified. This catches and silently discards every exception including KeyboardInterrupt, SystemExit, and MemoryError, making failures invisible to the caller.",
+  "base_ref": "bench/py_exception_swallow_016/base",
+  "head_ref": "bench/py_exception_swallow_016/head",
+  "expected_findings": [
+    {
+      "file_path": "app/services/import_service.py",
+      "line_range": [27, 36],
+      "severity_min": "medium",
+      "category": "bug",
+      "description": "import_users_from_csv uses a bare 'except: pass' which catches all exceptions including BaseException subclasses. Errors during row parsing or database insertion are silently swallowed, returning a misleading count to the caller.",
+      "keywords": ["bare except", "except pass", "swallow", "exception", "KeyboardInterrupt", "BaseException", "silent", "catch", "noqa E722"],
+      "required": true
+    },
+    {
+      "file_path": "app/services/import_service.py",
+      "line_range": [28, 32],
+      "severity_min": "medium",
+      "category": "bug",
+      "description": "new_id is computed as max(db.USERS.keys(), default=0) + 1 inside the loop. In concurrent scenarios multiple threads could compute the same max and generate duplicate IDs.",
+      "keywords": ["race", "concurrent", "id", "max", "keys", "duplicate", "thread", "new_id", "USERS"],
+      "required": false
+    }
+  ],
+  "expected_clean": [
+    {
+      "file_path": "app/utils/csv_reader.py",
+      "description": "Pure CSV parsing utilities with no exception handling",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["bug", "python", "exception-handling", "bare-except", "medium"]
+}

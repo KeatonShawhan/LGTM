@@ -1,0 +1,26 @@
+{
+  "case_id": "go_nil_map_write_014",
+  "name": "Nil map write panic in WorkerPool",
+  "description": "WorkerPool declares 'var results map[int]Result' which initialises results to nil. The loop immediately attempts results[id] = Result{...}, which panics at runtime with 'assignment to entry in nil map'.",
+  "base_ref": "bench/go_nil_map_write_014/base",
+  "head_ref": "bench/go_nil_map_write_014/head",
+  "expected_findings": [
+    {
+      "file_path": "app_go/internal/worker/processor.go",
+      "line_range": [18, 28],
+      "severity_min": "medium",
+      "category": "bug",
+      "description": "WorkerPool uses 'var results map[int]Result' which is nil. Writing to a nil map causes a runtime panic. The fix is 'results := make(map[int]Result)' to initialise the map before use.",
+      "keywords": ["nil map", "panic", "make", "map", "assignment", "nil", "runtime", "initialise", "WorkerPool"],
+      "required": true
+    }
+  ],
+  "expected_clean": [
+    {
+      "file_path": "app_go/cmd/server/main.go",
+      "description": "Server entry point with no map operations",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["bug", "go", "nil-map", "panic", "runtime", "medium"]
+}

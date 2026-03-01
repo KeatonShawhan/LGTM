@@ -1,0 +1,26 @@
+{
+  "case_id": "ts_type_assertion_010",
+  "name": "Unsafe 'as any' cast in parseApiResponse bypasses type validation",
+  "description": "A new parseApiResponse function casts an unknown API payload directly to UserRecord via 'as any', skipping the isUserRecord type guard already defined in the same file. Malformed or null payloads will propagate as broken objects at runtime.",
+  "base_ref": "bench/ts_type_assertion_010/base",
+  "head_ref": "bench/ts_type_assertion_010/head",
+  "expected_findings": [
+    {
+      "file_path": "app_js/src/utils/types.ts",
+      "line_range": [36, 44],
+      "severity_min": "medium",
+      "category": "bug",
+      "description": "parseApiResponse casts rawPayload to 'any' without calling the isUserRecord type guard, discarding TypeScript's type safety. If the API returns null or a wrong shape, the returned object will be malformed and crash callers at runtime.",
+      "keywords": ["as any", "type assertion", "unsafe", "cast", "validation", "type guard", "isUserRecord", "null", "runtime"],
+      "required": true
+    }
+  ],
+  "expected_clean": [
+    {
+      "file_path": "app_js/src/services/userService.js",
+      "description": "Simple async user lookup with no type assertions",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["bug", "typescript", "type-safety", "cast", "null-safety", "medium"]
+}

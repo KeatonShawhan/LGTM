@@ -1,0 +1,26 @@
+{
+  "case_id": "js_promise_rejection_008",
+  "name": "Unhandled promise rejection in setTimeout callback",
+  "description": "A new fetchUserData function launches an async callback inside setTimeout without try/catch. If the inner await rejects, the rejection is unhandled — silently swallowed in older Node or crashing the process in Node >= 15.",
+  "base_ref": "bench/js_promise_rejection_008/base",
+  "head_ref": "bench/js_promise_rejection_008/head",
+  "expected_findings": [
+    {
+      "file_path": "app_js/src/services/userService.js",
+      "line_range": [31, 37],
+      "severity_min": "medium",
+      "category": "bug",
+      "description": "fetchUserData passes an async arrow function to setTimeout without try/catch. Rejections from fetchRemote or db.cacheUser are unhandled and will cause an UnhandledPromiseRejectionWarning or process crash.",
+      "keywords": ["unhandled", "promise", "rejection", "async", "setTimeout", "try", "catch", "await", "fetchRemote"],
+      "required": true
+    }
+  ],
+  "expected_clean": [
+    {
+      "file_path": "app_js/src/utils/format.js",
+      "description": "Pure formatting utilities with no async code or error paths",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["bug", "javascript", "async", "promise", "unhandled-rejection", "medium"]
+}

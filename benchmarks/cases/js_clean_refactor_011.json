@@ -1,0 +1,16 @@
+{
+  "case_id": "js_clean_refactor_011",
+  "name": "Clean refactor — extract helper functions in orders route",
+  "description": "The getOrder handler is refactored to extract formatTotal, capitalize, and buildOrderResponse as named helper functions. No logic changes, no bugs introduced. Tests the system's false-positive rate on a clean JavaScript refactor.",
+  "base_ref": "bench/js_clean_refactor_011/base",
+  "head_ref": "bench/js_clean_refactor_011/head",
+  "expected_findings": [],
+  "expected_clean": [
+    {
+      "file_path": "app_js/src/routes/orders.js",
+      "description": "Pure extract-function refactor — identical logic, only reorganised into named helpers",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["clean", "javascript", "refactor", "false-positive-test"]
+}

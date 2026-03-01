@@ -1,0 +1,26 @@
+{
+  "case_id": "js_prototype_pollution_009",
+  "name": "Prototype pollution via unguarded key assignment in mergeConfig",
+  "description": "A new mergeConfig utility iterates over user-supplied object keys and assigns them directly without checking for dangerous keys like __proto__, constructor, or prototype. An attacker can poison Object.prototype for the entire Node process.",
+  "base_ref": "bench/js_prototype_pollution_009/base",
+  "head_ref": "bench/js_prototype_pollution_009/head",
+  "expected_findings": [
+    {
+      "file_path": "app_js/src/utils/merge.js",
+      "line_range": [26, 33],
+      "severity_min": "high",
+      "category": "security",
+      "description": "mergeConfig iterates all keys from userConfig with `for...in` and assigns result[key] = userConfig[key] without a hasOwnProperty check or a key denylist. Passing {\"__proto__\": {\"isAdmin\": true}} will pollute Object.prototype.",
+      "keywords": ["prototype", "pollution", "__proto__", "constructor", "hasOwnProperty", "denylist", "key", "merge", "injection"],
+      "required": true
+    }
+  ],
+  "expected_clean": [
+    {
+      "file_path": "app_js/src/services/userService.js",
+      "description": "Simple user lookup — no object merging or user-controlled keys",
+      "max_findings": 0
+    }
+  ],
+  "tags": ["security", "javascript", "prototype-pollution", "injection", "high"]
+}

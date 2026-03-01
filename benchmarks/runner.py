@@ -10,9 +10,12 @@ Usage:
 """
 import argparse
 import asyncio
+import concurrent.futures
 import json
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections import defaultdict
 from dataclasses import asdict
@@ -110,23 +113,31 @@ def discover_cases(case_id: str | None = None) -> list[BenchmarkCase]:
 # Git helpers
 # ---------------------------------------------------------------------------
 
-def resolve_ref(ref: str) -> str:
-    """Resolve a git ref to a SHA in the fixture repo."""
+def resolve_ref(ref: str, repo_path: Path = FIXTURE_REPO) -> str:
+    """Resolve a git ref to a SHA in the given repo."""
     result = subprocess.run(
         ["git", "rev-parse", ref],
-        cwd=FIXTURE_REPO, capture_output=True, text=True, check=True,
+        cwd=repo_path, capture_output=True, text=True, check=True,
     )
     return result.stdout.strip()
 
 
-def compute_changeset(base_sha: str, head_sha: str) -> ChangeSet:
+def compute_changeset(base_sha: str, head_sha: str, repo_path: Path = FIXTURE_REPO) -> ChangeSet:
     """Compute ChangeSet between two commits in the fixture repo."""
     result = subprocess.run(
         ["git", "diff", "-U3", base_sha, head_sha],
-        cwd=FIXTURE_REPO, capture_output=True, text=True, check=True,
+        cwd=repo_path, capture_output=True, text=True, check=True,
     )
     files = parse_diff_output(result.stdout)
     return ChangeSet(base_commit=base_sha, head_commit=head_sha, files=files)
+
+
+def clone_fixture_repo(dest: Path) -> None:
+    """Clone fixture repo into dest using hardlinks (fast, minimal disk use)."""
+    subprocess.run(
+        ["git", "clone", "--local", str(FIXTURE_REPO), str(dest)],
+        check=True, capture_output=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +221,7 @@ def build_code_context(change_set: ChangeSet) -> CodeContext:
 # Run a single benchmark case
 # ---------------------------------------------------------------------------
 
-async def run_case(case: BenchmarkCase, model: str) -> dict:
+async def run_case(case: BenchmarkCase, model: str, repo_path: Path) -> dict:
     """Run a single benchmark case end-to-end and return scored results."""
     print(f"\n{'='*60}")
     print(f"  Case: {case.case_id} — {case.name}")
@@ -220,12 +231,12 @@ async def run_case(case: BenchmarkCase, model: str) -> dict:
     start_time = time.time()
 
     # 1. Resolve refs
-    base_sha = resolve_ref(case.base_ref)
-    head_sha = resolve_ref(case.head_ref)
+    base_sha = resolve_ref(case.base_ref, repo_path)
+    head_sha = resolve_ref(case.head_ref, repo_path)
     print(f"  Base: {base_sha[:8]}  Head: {head_sha[:8]}")
 
     # 2. Compute changeset
-    change_set = compute_changeset(base_sha, head_sha)
+    change_set = compute_changeset(base_sha, head_sha, repo_path)
     print(f"  Files changed: {len(change_set.files)}")
     for f in change_set.files:
         print(f"    {f.path}  (+{f.added} -{f.removed})")
@@ -236,7 +247,7 @@ async def run_case(case: BenchmarkCase, model: str) -> dict:
     # 4. Checkout the head state so the review agent can read files
     subprocess.run(
         ["git", "checkout", head_sha, "--quiet"],
-        cwd=FIXTURE_REPO, check=True, capture_output=True,
+        cwd=repo_path, check=True, capture_output=True,
     )
 
     # 5. Run agentic review
@@ -245,7 +256,7 @@ async def run_case(case: BenchmarkCase, model: str) -> dict:
         review_result = await run_review_core(
             code_context=asdict(code_context),
             change_set=asdict(change_set),
-            repo_path=str(FIXTURE_REPO),
+            repo_path=str(repo_path),
             heartbeat_fn=lambda msg: print(f"    [{msg}]"),
             model_override=model,
         )
@@ -253,7 +264,7 @@ async def run_case(case: BenchmarkCase, model: str) -> dict:
         # Restore HEAD to master so the repo isn't in detached state
         subprocess.run(
             ["git", "checkout", "master", "--quiet"],
-            cwd=FIXTURE_REPO, check=False, capture_output=True,
+            cwd=repo_path, check=False, capture_output=True,
         )
 
     wall_time = time.time() - start_time
@@ -290,27 +301,48 @@ async def run_case(case: BenchmarkCase, model: str) -> dict:
     }
 
 
+def run_case_isolated_sync(case: BenchmarkCase, model: str) -> dict:
+    """Clone fixture repo into a temp dir, run the case in isolation, then clean up.
+
+    Runs in its own thread with its own event loop so the blocking sync Anthropic
+    client calls don't stall the main event loop and cases execute truly in parallel.
+    """
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        clone_fixture_repo(tmp)
+        return asyncio.run(run_case(case, model, tmp))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
-async def main():
+def main():
     parser = argparse.ArgumentParser(description="LGTM Benchmark Runner")
     parser.add_argument("--case", type=str, default=None, help="Run a specific case by ID")
     parser.add_argument("--model", type=str, default="sonnet", help="Model to use (sonnet, haiku, opus, or full model ID)")
+    parser.add_argument("--concurrency", type=int, default=3, help="Max cases to run concurrently (default: 3, use 1 for serial)")
     args = parser.parse_args()
 
     model = MODEL_ALIASES.get(args.model, args.model)
     cases = discover_cases(args.case)
     print(f"Discovered {len(cases)} benchmark case(s)")
     print(f"Using model: {model}")
+    print(f"Concurrency: {args.concurrency}")
 
     RESULTS_DIR.mkdir(exist_ok=True)
 
-    results = []
-    for case in cases:
-        result = await run_case(case, model)
-        results.append(result)
+    suite_start = time.time()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrency) as executor:
+        futures = [executor.submit(run_case_isolated_sync, case, model) for case in cases]
+        results = [f.result() for f in concurrent.futures.as_completed(futures)]
+    suite_wall_time = time.time() - suite_start
+
+    # Reorder results to match original case order (as_completed returns in completion order)
+    case_id_to_result = {r["case_id"]: r for r in results}
+    results = [case_id_to_result[case.case_id] for case in cases]
 
     # Compute trace metrics for each case
     case_trace_metrics = []
@@ -328,8 +360,9 @@ async def main():
     suite_output = {
         "timestamp": timestamp,
         "model": model,
+        "concurrency": args.concurrency,
         "cases": results,
-        "aggregate": _compute_aggregate(results),
+        "aggregate": _compute_aggregate(results, suite_wall_time),
         "trace_aggregate": aggregate_trace_metrics(case_trace_metrics),
     }
 
@@ -344,12 +377,16 @@ async def main():
     print(f"  Avg Recall:    {agg['avg_recall']:.2f}")
     print(f"  Avg F1:        {agg['avg_f1']:.2f}")
     print(f"  Total Tokens:  {agg['total_tokens']}")
-    print(f"  Total Time:    {agg['total_wall_time']:.1f}s")
+    print(f"  Suite Time:    {agg['suite_wall_time']:.1f}s  (compute: {agg['total_wall_time']:.1f}s)")
     print(f"  Results saved: {output_path}")
 
 
-def _compute_aggregate(results: list[dict]) -> dict:
-    """Compute aggregate metrics across all cases."""
+def _compute_aggregate(results: list[dict], suite_wall_time: float = 0.0) -> dict:
+    """Compute aggregate metrics across all cases.
+
+    total_wall_time: sum of per-case wall times (compute cost proxy).
+    suite_wall_time: actual elapsed time for the full suite (reflects parallelism).
+    """
     scores = [r["score"] for r in results]
     n = len(scores)
     if n == 0:
@@ -387,8 +424,9 @@ def _compute_aggregate(results: list[dict]) -> dict:
         "total_false_positives": total_fp,
         "total_tokens": total_tokens,
         "total_wall_time": round(sum(s["wall_time_seconds"] for s in scores), 1),
+        "suite_wall_time": round(suite_wall_time, 1),
     }
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
