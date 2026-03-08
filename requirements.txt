@@ -1,0 +1,15 @@
+# Core pipeline
+anthropic>=0.75.0
+claude-agent-sdk>=0.1.13
+temporalio>=1.20.0
+python-dotenv>=1.1.1
+
+# GitHub App server
+fastapi>=0.135.0
+uvicorn[standard]>=0.35.0
+httpx>=0.28.0
+PyJWT>=2.10.0
+cryptography>=46.0.0
+
+# Observability (optional — no-op if LANGSMITH_API_KEY is not set)
+langsmith>=0.4.0

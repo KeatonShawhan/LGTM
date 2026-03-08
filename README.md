@@ -1,6 +1,60 @@
 # LGTM
 
-An agentic code review system built on the Claude Agent SDK. LGTM ingests a Git repository and ref, constructs a layered code context, and runs an iterative review agent that produces structured findings with grounded evidence — validated deterministically before surfacing.
+An agentic code review system built on the Claude Agent SDK. Install it as a **GitHub App** to get automatic AI-powered PR reviews, or run it locally via CLI.
+
+LGTM ingests a Git repository and ref, constructs a layered code context, and runs an iterative review agent that produces structured findings with grounded evidence — validated deterministically before surfacing.
+
+---
+
+## GitHub App
+
+Install LGTM on your repository to get automatic code reviews on every pull request — no configuration needed.
+
+**How it works:**
+1. Open a pull request
+2. LGTM clones the PR branch, runs the full agentic review pipeline
+3. Findings are posted as a PR review with severity-grouped findings, evidence snippets, and fix suggestions
+
+**Self-hosting:**
+
+Deploy your own instance in minutes:
+
+```bash
+# 1. Clone and install
+git clone https://github.com/KeatonShawhan/LGTM.git
+cd LGTM
+pip install -r requirements.txt
+
+# 2. Configure environment
+cp .env.example .env
+# Fill in GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET, ANTHROPIC_API_KEY
+
+# 3. Run the webhook server
+uvicorn server.app:app --host 0.0.0.0 --port 3000
+```
+
+**Deploy to Railway (one command):**
+
+```bash
+railway up
+```
+
+**Required environment variables for the server:**
+
+| Variable | Description |
+|----------|-------------|
+| `GITHUB_APP_ID` | GitHub App ID (numeric) |
+| `GITHUB_APP_PRIVATE_KEY` | RSA private key from GitHub App settings (PEM) |
+| `GITHUB_WEBHOOK_SECRET` | Webhook secret configured in GitHub App settings |
+| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `REVIEW_MODEL` | Optional model override (default: `claude-sonnet-4-6`) |
+
+**GitHub App setup (one-time):**
+1. Go to GitHub → Settings → Developer settings → GitHub Apps → New GitHub App
+2. Set the webhook URL to `https://your-server.com/webhook`
+3. Subscribe to `Pull requests` events
+4. Generate a private key and copy the App ID
+5. Install the app on your repo
 
 ---
 
