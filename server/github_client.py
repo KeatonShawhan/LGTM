@@ -56,7 +56,8 @@ async def get_installation_token(installation_id: int, app_id: str, private_key:
 def clone_repo_with_token(clone_url: str, token: str, dest: Path, branch: str | None = None) -> None:
     """Clone a GitHub repo into dest using an installation access token."""
     auth_url = clone_url.replace("https://", f"https://x-access-token:{token}@")
-    cmd = ["git", "clone", "--depth", "50"]
+    # --no-single-branch fetches all branches so base_sha (e.g. main) is available for diffing
+    cmd = ["git", "clone", "--depth", "50", "--no-single-branch"]
     if branch:
         cmd += ["--branch", branch]
     cmd += [auth_url, str(dest)]
