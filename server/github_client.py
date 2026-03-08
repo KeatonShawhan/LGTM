@@ -128,12 +128,12 @@ def _format_review_body(result: ReviewResult) -> str:
         for f in findings:
             conf = f.confidence_adjusted if f.confidence_adjusted is not None else f.confidence
             cat = CATEGORY_LABEL.get(f.category, f.category.title())
-            lines.append(f"**[{cat}] `{f.file_path}:{f.line_number}`** — {f.title}")
-            lines.append(f"*Confidence: {conf:.0%}*")
+            lines.append(f"---\n**`{f.file_path}:{f.line_number}`** — {f.title}")
+            lines.append(f"*{SEVERITY_EMOJI.get(f.severity, '')} {f.severity.capitalize()} · {cat} · {conf:.0%} confidence*\n")
             if f.evidence:
-                lines.append(f"```\n{f.evidence.strip()}\n```")
+                lines.append(f"> {f.evidence.strip()}\n")
             if f.suggestion:
-                lines.append(f"> **Suggestion:** {f.suggestion}")
+                lines.append(f"💡 **Suggestion:** {f.suggestion}")
             lines.append("")
 
     conf_pct = result.overall_confidence * 100
