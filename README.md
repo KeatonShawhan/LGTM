@@ -8,7 +8,7 @@ LGTM ingests a Git repository and ref, constructs a layered code context, and ru
 
 ## GitHub App
 
-Install LGTM on your repository to get automatic code reviews on every pull request — no configuration needed.
+Install LGTM on your repository to get automatic code reviews on every pull request, no configuration needed.
 
 **How it works:**
 1. Open a pull request
