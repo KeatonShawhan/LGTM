@@ -53,15 +53,14 @@ async def get_installation_token(installation_id: int, app_id: str, private_key:
 # Repository cloning
 # ---------------------------------------------------------------------------
 
-def clone_repo_with_token(clone_url: str, token: str, dest: Path) -> None:
+def clone_repo_with_token(clone_url: str, token: str, dest: Path, branch: str | None = None) -> None:
     """Clone a GitHub repo into dest using an installation access token."""
-    # Inject token into the HTTPS clone URL
     auth_url = clone_url.replace("https://", f"https://x-access-token:{token}@")
-    subprocess.run(
-        ["git", "clone", "--depth", "50", auth_url, str(dest)],
-        check=True,
-        capture_output=True,
-    )
+    cmd = ["git", "clone", "--depth", "50"]
+    if branch:
+        cmd += ["--branch", branch]
+    cmd += [auth_url, str(dest)]
+    subprocess.run(cmd, check=True, capture_output=True)
 
 
 # ---------------------------------------------------------------------------

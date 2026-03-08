@@ -109,13 +109,14 @@ async def run_pr_review(
     owner: str,
     repo: str,
     head_sha: str,
+    head_ref: str,
     base_sha: str,
     clone_url: str,
     installation_token: str,
     model: str,
 ) -> ReviewResult:
     """
-    Clone the PR's head, run the LGTM pipeline, return ReviewResult.
+    Clone the PR's head branch, run the LGTM pipeline, return ReviewResult.
 
     Runs in a thread executor so blocking git/subprocess calls don't stall the
     asyncio event loop.
@@ -124,23 +125,12 @@ async def run_pr_review(
     try:
         repo_path = tmp_dir / "repo"
 
-        # Clone (blocking — run in executor so we don't block the event loop)
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(
-            None,
-            clone_repo_with_token,
-            clone_url,
-            installation_token,
-            repo_path,
-        )
 
-        # Checkout head_sha
+        # Clone the specific head branch so head_sha is guaranteed to be present
         await loop.run_in_executor(
             None,
-            lambda: subprocess.run(
-                ["git", "checkout", head_sha, "--quiet"],
-                cwd=repo_path, check=True, capture_output=True,
-            ),
+            lambda: clone_repo_with_token(clone_url, installation_token, repo_path, branch=head_ref),
         )
 
         # Compute diff and build context (blocking, run in executor)

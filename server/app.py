@@ -69,6 +69,7 @@ async def _handle_pull_request(
     repo: str,
     pr_number: int,
     head_sha: str,
+    head_ref: str,
     base_sha: str,
     clone_url: str,
     installation_id: int,
@@ -86,6 +87,7 @@ async def _handle_pull_request(
             owner=owner,
             repo=repo,
             head_sha=head_sha,
+            head_ref=head_ref,
             base_sha=base_sha,
             clone_url=clone_url,
             installation_token=token,
@@ -154,8 +156,10 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
     repo: str = repo_data["name"]
     pr_number: int = pr["number"]
     head_sha: str = pr["head"]["sha"]
+    head_ref: str = pr["head"]["ref"]           # branch name
     base_sha: str = pr["base"]["sha"]
-    clone_url: str = repo_data["clone_url"]
+    # Use the head repo's clone URL so fork PRs work correctly
+    clone_url: str = pr["head"]["repo"]["clone_url"]
 
     log.info(
         "Queuing review: %s/%s#%d action=%s head=%s",
@@ -164,7 +168,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
 
     background_tasks.add_task(
         _handle_pull_request,
-        owner, repo, pr_number, head_sha, base_sha, clone_url, installation_id,
+        owner, repo, pr_number, head_sha, head_ref, base_sha, clone_url, installation_id,
     )
 
     return JSONResponse({"status": "queued", "pr": pr_number})
