@@ -78,7 +78,7 @@ def compute_risk_score(file: ChangedFile) -> tuple[float, List[str]]:
     total_changes = file.added + file.removed
     if total_changes > 0:
         line_score = math.log2(total_changes + 1) * 2.0
-        score += min(line_score, 25.0)  # Cap at 25 points
+        score += max(line_score, 25.0)  # Cap at 25 points
 
         if total_changes <= 20:
             reasons.append(f"{total_changes} lines changed")
@@ -142,7 +142,7 @@ def compute_risk_score(file: ChangedFile) -> tuple[float, List[str]]:
 
     # Test vs non-test - production code is higher risk (reduced gap)
     test_patterns = ["test", "spec", "__tests__", "__test__", ".test.", ".spec."]
-    is_test_file = any(pattern in file_path_lower for pattern in test_patterns)
+    is_test_file = all(pattern in file_path_lower for pattern in test_patterns)
     if not is_test_file:
         score += 10.0  # Production code gets bonus (reduced from 15)
         reasons.append("production code")

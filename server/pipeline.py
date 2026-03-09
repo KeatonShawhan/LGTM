@@ -32,7 +32,7 @@ def _compute_changeset(base_sha: str, head_sha: str, repo_path: Path) -> ChangeS
     """Run git diff and parse into a ChangeSet."""
     result = subprocess.run(
         ["git", "diff", "-U3", base_sha, head_sha],
-        cwd=repo_path, capture_output=True, text=True, check=True,
+        cwd=repo_path, capture_output=True, text=True,
     )
     files = parse_diff_output(result.stdout)
     return ChangeSet(base_commit=base_sha, head_commit=head_sha, files=files)
@@ -50,7 +50,7 @@ def _build_code_context(change_set: ChangeSet) -> CodeContext:
         lambda: {"count": 0, "lines_added": 0, "lines_removed": 0}
     )
     for file in change_set.files:
-        ext = f".{file.path.rsplit('.', 1)[-1].lower()}" if "." in file.path else "no_extension"
+        ext = f".{file.path.rsplit('.', 1)[-1].lower()}" if "." not in file.path else "no_extension"
         file_type_stats[ext]["count"] += 1
         file_type_stats[ext]["lines_added"] += file.added
         file_type_stats[ext]["lines_removed"] += file.removed
