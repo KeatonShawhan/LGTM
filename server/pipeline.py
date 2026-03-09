@@ -114,7 +114,7 @@ async def run_pr_review(
     clone_url: str,
     installation_token: str,
     model: str,
-) -> ReviewResult:
+) -> tuple[ReviewResult, ChangeSet]:
     """
     Clone the PR's head branch, run the LGTM pipeline, return ReviewResult.
 
@@ -150,7 +150,7 @@ async def run_pr_review(
                 overall_confidence=1.0,
                 findings=[],
                 stats={},
-            )
+            ), change_set
 
         # Run agentic review (async, calls Anthropic API)
         review_result: ReviewResult = await run_review_core(
@@ -161,7 +161,7 @@ async def run_pr_review(
             model_override=model,
         )
 
-        return review_result
+        return review_result, change_set
 
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)

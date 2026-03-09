@@ -83,7 +83,7 @@ async def _handle_pull_request(
             config.GITHUB_APP_PRIVATE_KEY,
         )
 
-        result = await run_pr_review(
+        result, change_set = await run_pr_review(
             owner=owner,
             repo=repo,
             head_sha=head_sha,
@@ -100,7 +100,11 @@ async def _handle_pull_request(
             config.GITHUB_APP_ID,
             config.GITHUB_APP_PRIVATE_KEY,
         )
-        await post_pr_review(owner, repo, pr_number, token, result)
+        await post_pr_review(
+            owner, repo, pr_number, token, result,
+            head_sha=head_sha,
+            change_set=change_set,
+        )
         log.info(
             "Review posted: %s/%s#%d — %d finding(s)",
             owner, repo, pr_number, len(result.findings),
