@@ -7,6 +7,7 @@ Flow:
   3. clone_repo_with_token()     → authenticated git clone
   4. post_pr_review()            → posts findings as a GitHub PR review
 """
+import logging
 import time
 import subprocess
 import tempfile
@@ -14,6 +15,8 @@ from pathlib import Path
 
 import httpx
 import jwt  # PyJWT
+
+log = logging.getLogger(__name__)
 
 from utils.dataclasses import ReviewResult, ReviewFinding, ChangeSet
 
@@ -212,12 +215,15 @@ async def post_pr_review(
 
     if change_set is not None and head_sha:
         valid_lines = _diff_line_set(change_set)
+        log.info("Diff coverage: %s", {k: sorted(v) for k, v in valid_lines.items()})
         for f in result.findings:
-            if (
+            in_diff = (
                 f.line_number
                 and f.file_path in valid_lines
                 and f.line_number in valid_lines[f.file_path]
-            ):
+            )
+            log.info("  finding %s:%s → %s", f.file_path, f.line_number, "inline" if in_diff else "overflow")
+            if in_diff:
                 inline_comments.append({
                     "path": f.file_path,
                     "line": f.line_number,

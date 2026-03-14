@@ -271,9 +271,14 @@ def handle_read_file_diff(tool_input: dict, ctx: ToolContext) -> str:
     ]
 
     for i, hunk in enumerate(changed_file.hunks):
-        lines.append(f"--- Hunk {i + 1} (starting at line {hunk.start}) ---")
+        lines.append(f"--- Hunk {i + 1} (new-file starts at line {hunk.start}) ---")
+        line_no = hunk.start
         for diff_line in hunk.lines:
-            lines.append(diff_line)
+            if diff_line.startswith('-'):
+                lines.append(f"     {diff_line}")
+            else:
+                lines.append(f"{line_no:4d} {diff_line}")
+                line_no += 1
         lines.append("")
 
     if file_path not in ctx.files_analyzed:
@@ -594,6 +599,11 @@ Other rules:
 - You have a LIMITED number of iterations. Analyze all inline diffs first, then submit.
 - You MUST call submit_review. If in doubt, submit early with what you have.
 
+Line number rule:
+- Each diff line is prefixed with its NEW-FILE line number (e.g. "  81 +    code here").
+- Removed lines ('-') have no number (indented with spaces) — do not report findings on removed lines.
+- When reporting a finding, use the new-file line number shown to the left of the relevant '+' or ' ' line.
+
 Efficiency:
 - All files have diffs inline — analyze them directly without tool calls
 - Use read_file_snippet only for targeted investigation of specific line ranges
@@ -654,10 +664,15 @@ def _build_initial_message(
             diff_lines = []
             for i, hunk in enumerate(changed_file.hunks):
                 diff_lines.append(
-                    f"--- Hunk {i + 1} (starting at line {hunk.start}) ---"
+                    f"--- Hunk {i + 1} (new-file starts at line {hunk.start}) ---"
                 )
+                line_no = hunk.start
                 for diff_line in hunk.lines:
-                    diff_lines.append(diff_line)
+                    if diff_line.startswith('-'):
+                        diff_lines.append(f"     {diff_line}")
+                    else:
+                        diff_lines.append(f"{line_no:4d} {diff_line}")
+                        line_no += 1
                 diff_lines.append("")
             raw_diffs[fc.path] = "\n".join(diff_lines)
             total_diff_chars += len(raw_diffs[fc.path])
